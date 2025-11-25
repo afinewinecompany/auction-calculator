@@ -15,7 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Check } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Check, Sparkles } from 'lucide-react';
+import { SCORING_PRESETS, getPresetById } from '@/lib/scoring-presets';
+import { useToast } from '@/hooks/use-toast';
 
 interface ScoringFormatSelectorProps {
   onComplete: () => void;
@@ -24,6 +27,7 @@ interface ScoringFormatSelectorProps {
 
 export function ScoringFormatSelector({ onComplete, isComplete }: ScoringFormatSelectorProps) {
   const { scoringFormat, setScoringFormat } = useAppContext();
+  const { toast } = useToast();
   
   const [selectedType, setSelectedType] = useState<'roto' | 'h2h-categories' | 'h2h-points'>(
     scoringFormat?.type || 'roto'
@@ -44,6 +48,29 @@ export function ScoringFormatSelector({ onComplete, isComplete }: ScoringFormatS
   const [pitchingPoints, setPitchingPoints] = useState<Record<string, number>>(
     scoringFormat?.type === 'h2h-points' ? scoringFormat?.pitchingPoints : DEFAULT_PITCHING_POINTS
   );
+
+  const [selectedPreset, setSelectedPreset] = useState<string>('');
+
+  const handlePresetLoad = (presetId: string) => {
+    const preset = getPresetById(presetId);
+    if (!preset) return;
+
+    setSelectedPreset(presetId);
+    setSelectedType(preset.scoringFormat.type);
+
+    if (preset.scoringFormat.type === 'h2h-points') {
+      setHittingPoints(preset.scoringFormat.hittingPoints);
+      setPitchingPoints(preset.scoringFormat.pitchingPoints);
+    } else {
+      setHittingCategories(preset.scoringFormat.hittingCategories);
+      setPitchingCategories(preset.scoringFormat.pitchingCategories);
+    }
+
+    toast({
+      title: 'Preset Loaded',
+      description: `${preset.name} scoring format has been applied`,
+    });
+  };
 
   const handleCategoryToggle = (category: string, type: 'hitting' | 'pitching') => {
     if (type === 'hitting') {
@@ -98,6 +125,45 @@ export function ScoringFormatSelector({ onComplete, isComplete }: ScoringFormatS
         </CardDescription>
       </CardHeader>
       <CardContent className="pt-8 pb-8">
+        <div className="mb-8 p-4 bg-muted/50 rounded-lg border border-border">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-baseball-gold" />
+              <span className="font-semibold">Quick Start</span>
+            </div>
+            <Select value={selectedPreset} onValueChange={handlePresetLoad}>
+              <SelectTrigger className="w-64" data-testid="select-scoring-preset">
+                <SelectValue placeholder="Load a preset..." />
+              </SelectTrigger>
+              <SelectContent>
+                {['ESPN', 'Yahoo', 'Fantrax', 'Ottoneu'].map(platform => {
+                  const platformPresets = SCORING_PRESETS.filter(p => p.platform === platform);
+                  if (platformPresets.length === 0) return null;
+                  return (
+                    <div key={platform}>
+                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
+                        {platform}
+                      </div>
+                      {platformPresets.map(preset => (
+                        <SelectItem 
+                          key={preset.id} 
+                          value={preset.id}
+                          data-testid={`select-preset-${preset.id}`}
+                        >
+                          {preset.name}
+                        </SelectItem>
+                      ))}
+                    </div>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Select a platform preset to auto-fill scoring settings, then customize as needed
+          </p>
+        </div>
+
         <Tabs value={selectedType} onValueChange={(value) => setSelectedType(value as any)}>
           <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="roto" data-testid="tab-roto">Rotisserie</TabsTrigger>

@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Check } from 'lucide-react';
 
 interface LeagueConfigFormProps {
@@ -91,23 +90,18 @@ export function LeagueConfigForm({ onComplete, isComplete }: LeagueConfigFormPro
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-sm font-medium text-foreground">Number of Teams</FormLabel>
-                    <Select
-                      value={field.value?.toString()}
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                    >
-                      <FormControl>
-                        <SelectTrigger data-testid="select-team-count" className="bg-background border-input">
-                          <SelectValue placeholder="Select teams" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {[8, 10, 12, 14, 16, 18, 20].map((num) => (
-                          <SelectItem key={num} value={num.toString()}>
-                            {num} Teams
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="2"
+                        max="30"
+                        placeholder="12"
+                        {...field}
+                        onChange={(e) => field.onChange(parseInt(e.target.value) || 12)}
+                        data-testid="input-team-count"
+                        className="font-mono bg-background border-input"
+                      />
+                    </FormControl>
                     <FormMessage />
                   </FormItem>
                 )}

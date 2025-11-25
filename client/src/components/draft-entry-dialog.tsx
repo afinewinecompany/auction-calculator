@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { useAppContext } from '@/lib/app-context';
 import type { PlayerValue } from '@shared/schema';
 
 interface DraftEntryDialogProps {
@@ -21,8 +22,17 @@ interface DraftEntryDialogProps {
 }
 
 export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEntryDialogProps) {
+  const { myTeamName } = useAppContext();
   const [actualPrice, setActualPrice] = useState<string>('');
   const [draftedBy, setDraftedBy] = useState<string>('');
+  const [isMyPick, setIsMyPick] = useState<boolean>(true);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsMyPick(true);
+      setDraftedBy(myTeamName);
+    }
+  }, [isOpen, myTeamName]);
 
   const handleConfirm = () => {
     const price = parseInt(actualPrice);
@@ -30,15 +40,33 @@ export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEn
       return;
     }
 
-    onConfirm(player.id, price, draftedBy || undefined);
+    if (!isMyPick && !draftedBy.trim()) {
+      return;
+    }
+
+    const teamName = isMyPick ? myTeamName : draftedBy.trim();
+    onConfirm(player.id, price, teamName);
     setActualPrice('');
     setDraftedBy('');
+    setIsMyPick(true);
   };
+
+  const canConfirm = actualPrice && parseInt(actualPrice) >= 1 && (isMyPick || draftedBy.trim());
 
   const handleCancel = () => {
     setActualPrice('');
     setDraftedBy('');
+    setIsMyPick(true);
     onClose();
+  };
+
+  const handleTeamToggle = (isMe: boolean) => {
+    setIsMyPick(isMe);
+    if (isMe) {
+      setDraftedBy(myTeamName);
+    } else {
+      setDraftedBy('');
+    }
   };
 
   const projectedValue = player.adjustedValue || player.originalValue;
@@ -103,17 +131,39 @@ export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEn
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="drafted-by" className="text-sm font-medium">
-                Drafted By (Optional)
-              </Label>
-              <Input
-                id="drafted-by"
-                type="text"
-                placeholder="Team name"
-                value={draftedBy}
-                onChange={(e) => setDraftedBy(e.target.value)}
-                data-testid="input-drafted-by"
-              />
+              <Label className="text-sm font-medium">Drafted By</Label>
+              <div className="flex gap-2 mb-2">
+                <Button
+                  type="button"
+                  variant={isMyPick ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleTeamToggle(true)}
+                  className={isMyPick ? "bg-baseball-navy flex-1" : "flex-1"}
+                  data-testid="button-my-pick"
+                >
+                  {myTeamName}
+                </Button>
+                <Button
+                  type="button"
+                  variant={!isMyPick ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => handleTeamToggle(false)}
+                  className={!isMyPick ? "bg-muted flex-1" : "flex-1"}
+                  data-testid="button-other-team"
+                >
+                  Other Team
+                </Button>
+              </div>
+              {!isMyPick && (
+                <Input
+                  id="drafted-by"
+                  type="text"
+                  placeholder="Enter team name"
+                  value={draftedBy}
+                  onChange={(e) => setDraftedBy(e.target.value)}
+                  data-testid="input-drafted-by"
+                />
+              )}
             </div>
           </div>
         </div>
@@ -129,7 +179,7 @@ export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEn
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={!actualPrice || parseInt(actualPrice) < 1}
+            disabled={!canConfirm}
             className="bg-baseball-navy hover-elevate active-elevate-2"
             data-testid="button-confirm-draft"
           >

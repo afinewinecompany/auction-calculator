@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
+import { useAppContext } from '@/lib/app-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, TrendingUp, TrendingDown } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Star } from 'lucide-react';
 import type { PlayerValue } from '@shared/schema';
 
 interface DraftPlayerTableProps {
@@ -13,8 +14,10 @@ interface DraftPlayerTableProps {
 }
 
 export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTableProps) {
+  const { toggleTargetPlayer, isPlayerTargeted, targetedPlayerIds } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [positionFilter, setPositionFilter] = useState<string>('all');
+  const [showTargetsOnly, setShowTargetsOnly] = useState(false);
   const [hideDisabled, setHideDrafted] = useState(false);
 
   const allPositions = useMemo(() => {
@@ -44,12 +47,20 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
       );
     }
 
+    if (showTargetsOnly) {
+      filtered = filtered.filter(player => isPlayerTargeted(player.id));
+    }
+
     return filtered.sort((a, b) => {
       if (a.isDrafted && !b.isDrafted) return 1;
       if (!a.isDrafted && b.isDrafted) return -1;
+      const aTargeted = isPlayerTargeted(a.id);
+      const bTargeted = isPlayerTargeted(b.id);
+      if (aTargeted && !bTargeted) return -1;
+      if (!aTargeted && bTargeted) return 1;
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
-  }, [players, searchQuery, positionFilter, hideDisabled]);
+  }, [players, searchQuery, positionFilter, hideDisabled, showTargetsOnly, isPlayerTargeted]);
 
   return (
     <div className="space-y-4">
@@ -65,7 +76,17 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
           />
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
+          <Button
+            variant={showTargetsOnly ? "default" : "outline"}
+            onClick={() => setShowTargetsOnly(!showTargetsOnly)}
+            data-testid="button-toggle-draft-targets"
+            className={showTargetsOnly ? "" : "hover-elevate"}
+          >
+            <Star className={`mr-2 h-4 w-4 ${showTargetsOnly ? 'fill-current' : ''}`} />
+            Targets ({targetedPlayerIds.length})
+          </Button>
+
           <Select value={positionFilter} onValueChange={setPositionFilter}>
             <SelectTrigger className="w-32" data-testid="select-draft-position-filter">
               <SelectValue placeholder="Position" />
@@ -82,7 +103,7 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
             variant={hideDisabled ? "default" : "outline"}
             onClick={() => setHideDrafted(!hideDisabled)}
             data-testid="button-toggle-drafted"
-            className="hover-elevate"
+            className={hideDisabled ? "" : "hover-elevate"}
           >
             {hideDisabled ? 'Show All' : 'Hide Drafted'}
           </Button>
@@ -94,6 +115,9 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
           <Table>
             <TableHeader className="bg-baseball-leather sticky top-0 z-10">
               <TableRow className="hover:bg-baseball-leather">
+                <TableHead className="text-baseball-cream font-bold w-10">
+                  <Star className="h-4 w-4" />
+                </TableHead>
                 <TableHead className="text-baseball-cream font-bold">PLAYER</TableHead>
                 <TableHead className="text-baseball-cream font-bold">POS</TableHead>
                 <TableHead className="text-baseball-cream font-bold">ORIG $</TableHead>
@@ -108,6 +132,7 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
                 const adjustedValue = player.adjustedValue || originalValue;
                 const delta = adjustedValue - originalValue;
                 const deltaPercent = originalValue > 0 ? (delta / originalValue) * 100 : 0;
+                const targeted = isPlayerTargeted(player.id);
 
                 return (
                   <TableRow
@@ -116,10 +141,25 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
                       player.isDrafted
                         ? 'opacity-50 bg-muted/50'
                         : 'hover-elevate cursor-pointer active-elevate-2'
-                    }`}
+                    } ${targeted && !player.isDrafted ? 'ring-2 ring-yellow-500 ring-inset' : ''}`}
                     onClick={() => !player.isDrafted && onPlayerSelect(player)}
                     data-testid={`row-draft-player-${player.id}`}
                   >
+                    <TableCell className="w-10">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleTargetPlayer(player.id);
+                        }}
+                        data-testid={`button-target-draft-${player.id}`}
+                        className={targeted ? 'text-yellow-500' : 'text-muted-foreground'}
+                        disabled={player.isDrafted}
+                      >
+                        <Star className={`h-4 w-4 ${targeted ? 'fill-current' : ''}`} />
+                      </Button>
+                    </TableCell>
                     <TableCell className="font-semibold">
                       {player.name}
                       {player.isDrafted && player.draftedBy && (

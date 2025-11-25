@@ -3,7 +3,7 @@ import { z } from "zod";
 // League Configuration
 export const leagueSettingsSchema = z.object({
   leagueName: z.string().optional(),
-  teamCount: z.number().min(8).max(20),
+  teamCount: z.number().min(2).max(30),
   auctionBudget: z.number().min(1),
   totalRosterSpots: z.number().min(1),
   positionRequirements: z.object({
@@ -56,6 +56,7 @@ export const playerProjectionSchema = z.object({
   team: z.string().optional(),
   positions: z.array(z.string()),
   stats: z.record(z.string(), z.number()),
+  mlbamId: z.string().optional(),
 });
 
 export type PlayerProjection = z.infer<typeof playerProjectionSchema>;
@@ -95,8 +96,11 @@ export type ValueCalculationSettings = z.infer<typeof valueCalculationSettingsSc
 export const csvColumnMappingSchema = z.object({
   nameColumn: z.string(),
   teamColumn: z.string().optional(),
-  positionColumn: z.string(),
+  positionColumn: z.string().optional(),
+  mlbamIdColumn: z.string().optional(),
   statColumns: z.record(z.string(), z.string()),
+}).refine(data => data.positionColumn || data.mlbamIdColumn, {
+  message: "Either positionColumn or mlbamIdColumn must be provided",
 });
 
 export type CsvColumnMapping = z.infer<typeof csvColumnMappingSchema>;
@@ -136,6 +140,7 @@ export const appStateSchema = z.object({
   playerProjections: z.array(playerProjectionSchema).optional(),
   playerValues: z.array(playerValueSchema).optional(),
   draftState: draftStateSchema.optional(),
+  targetedPlayerIds: z.array(z.string()).optional(),
 });
 
 export type AppState = z.infer<typeof appStateSchema>;

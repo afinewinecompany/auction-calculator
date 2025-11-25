@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'wouter';
 import { useAppContext } from '@/lib/app-context';
 import { DraftMetrics } from '@/components/draft-metrics';
 import { DraftEntryDialog } from '@/components/draft-entry-dialog';
 import { DraftPlayerTable } from '@/components/draft-player-table';
 import { DraftLog } from '@/components/draft-log';
+import { PositionalNeedsTracker } from '@/components/positional-needs-tracker';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { calculateInflation } from '@/lib/calculations';
@@ -14,6 +15,7 @@ export default function DraftRoom() {
   const [, navigate] = useLocation();
   const { 
     leagueSettings,
+    scoringFormat,
     playerValues,
     setPlayerValues,
     draftState,
@@ -40,39 +42,82 @@ export default function DraftRoom() {
     }
   }, [leagueSettings, playerValues, draftState, setDraftState, navigate]);
 
+  const picksHash = useMemo(() => {
+    if (!draftState?.picks?.length) return '';
+    return draftState.picks.map(p => `${p.playerId}:${p.actualPrice}`).join(',');
+  }, [draftState?.picks]);
+
+  const playerValuesHash = useMemo(() => {
+    if (!playerValues.length) return '';
+    return playerValues.map(p => 
+      `${p.id}:${p.originalValue}:${p.adjustedValue ?? 0}:${p.isDrafted ? 1 : 0}`
+    ).join(',');
+  }, [playerValues]);
+
+  const leagueSettingsHash = useMemo(() => {
+    if (!leagueSettings) return '';
+    const posReqs = Object.entries(leagueSettings.positionRequirements || {})
+      .map(([k, v]) => `${k}:${v}`)
+      .join(',');
+    return `${leagueSettings.teamCount}:${leagueSettings.auctionBudget}:${leagueSettings.totalRosterSpots}:${posReqs}`;
+  }, [leagueSettings]);
+
+  const scoringFormatHash = useMemo(() => {
+    if (!scoringFormat) return '';
+    const { type, hittingCategories, pitchingCategories, hittingPoints, pitchingPoints } = scoringFormat;
+    const hitCats = hittingCategories?.join(',') ?? '';
+    const pitchCats = pitchingCategories?.join(',') ?? '';
+    const hitPts = hittingPoints ? Object.entries(hittingPoints).map(([k, v]) => `${k}:${v}`).join(',') : '';
+    const pitchPts = pitchingPoints ? Object.entries(pitchingPoints).map(([k, v]) => `${k}:${v}`).join(',') : '';
+    return `${type}:${hitCats}:${pitchCats}:${hitPts}:${pitchPts}`;
+  }, [scoringFormat]);
+
   useEffect(() => {
-    if (draftState && leagueSettings && playerValues.length > 0) {
-      const { inflationRate, adjustedValues } = calculateInflation(
-        playerValues,
-        draftState.picks,
-        leagueSettings
-      );
-      
-      setDraftState(prev => {
-        if (!prev) return prev;
-        const newState = {
-          ...prev,
-          currentInflationRate: inflationRate,
-          totalBudgetSpent: prev.picks.reduce((sum, p) => sum + p.actualPrice, 0),
-          totalPlayersDrafted: prev.picks.length,
-        };
-        return JSON.stringify(newState) !== JSON.stringify(prev) ? newState : prev;
-      });
-      
-      setPlayerValues(prev => 
-        JSON.stringify(adjustedValues) !== JSON.stringify(prev) ? adjustedValues : prev
-      );
+    if (!draftState || !leagueSettings || playerValues.length === 0) return;
+    
+    const { inflationRate, adjustedValues } = calculateInflation(
+      playerValues,
+      draftState.picks,
+      leagueSettings
+    );
+    
+    const totalSpent = draftState.picks.reduce((sum, p) => sum + p.actualPrice, 0);
+    
+    setDraftState(prev => {
+      if (!prev) return prev;
+      if (
+        prev.currentInflationRate === inflationRate &&
+        prev.totalBudgetSpent === totalSpent &&
+        prev.totalPlayersDrafted === prev.picks.length
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        currentInflationRate: inflationRate,
+        totalBudgetSpent: totalSpent,
+        totalPlayersDrafted: prev.picks.length,
+      };
+    });
+    
+    const hasChanges = adjustedValues.some((newVal, idx) => {
+      const oldVal = playerValues[idx];
+      return !oldVal || 
+             newVal.adjustedValue !== oldVal.adjustedValue ||
+             newVal.isDrafted !== oldVal.isDrafted;
+    });
+    
+    if (hasChanges) {
+      setPlayerValues(adjustedValues);
     }
-  }, [draftState?.picks, leagueSettings]);
+  }, [picksHash, playerValuesHash, leagueSettingsHash, scoringFormatHash, setDraftState, setPlayerValues]);
 
   const handlePlayerSelect = (player: PlayerValue) => {
     setSelectedPlayer(player);
     setIsDialogOpen(true);
   };
 
-  const handleDraftConfirm = (playerId: string, actualPrice: number, draftedBy?: string) => {
-    if (!draftState) return;
-
+  const handleDraftConfirm = useCallback((playerId: string, actualPrice: number, draftedBy?: string) => {
     const player = playerValues.find(p => p.id === playerId);
     if (!player) return;
 
@@ -84,27 +129,31 @@ export default function DraftRoom() {
       projectedValue: player.originalValue,
       actualPrice,
       draftedBy,
-      pickNumber: draftState.picks.length + 1,
+      pickNumber: 0,
       timestamp: Date.now(),
     };
 
-    setDraftState({
-      ...draftState,
-      picks: [...draftState.picks, newPick],
+    setDraftState(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        picks: [...prev.picks, { ...newPick, pickNumber: prev.picks.length + 1 }],
+      };
     });
 
     setIsDialogOpen(false);
     setSelectedPlayer(null);
-  };
+  }, [playerValues, setDraftState]);
 
-  const handleUndoLastPick = () => {
-    if (!draftState || draftState.picks.length === 0) return;
-
-    setDraftState({
-      ...draftState,
-      picks: draftState.picks.slice(0, -1),
+  const handleUndoLastPick = useCallback(() => {
+    setDraftState(prev => {
+      if (!prev || prev.picks.length === 0) return prev;
+      return {
+        ...prev,
+        picks: prev.picks.slice(0, -1),
+      };
     });
-  };
+  }, [setDraftState]);
 
   if (!leagueSettings || !draftState) {
     return null;
@@ -153,7 +202,12 @@ export default function DraftRoom() {
             />
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-6">
+            <PositionalNeedsTracker
+              leagueSettings={leagueSettings}
+              draftState={draftState}
+              playerValues={playerValues}
+            />
             <DraftLog 
               picks={draftState.picks}
               onUndo={handleUndoLastPick}

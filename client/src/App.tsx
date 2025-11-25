@@ -4,6 +4,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppProvider } from "@/lib/app-context";
+import { WelcomeDialog } from "@/components/welcome-dialog";
 import LeagueSettingsPage from "@/pages/league-settings";
 import DraftRoom from "@/pages/draft-room";
 import NotFound from "@/pages/not-found";
@@ -24,6 +25,7 @@ function App() {
       <TooltipProvider>
         <AppProvider>
           <Toaster />
+          <WelcomeDialog />
           <Router />
         </AppProvider>
       </TooltipProvider>

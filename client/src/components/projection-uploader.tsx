@@ -7,8 +7,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Upload, FileText, Check, X } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
+import { Upload, FileText, Check, X, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { fetchMultiplePlayerPositions } from '@/lib/mlb-api';
 import type { PlayerProjection } from '@shared/schema';
 
 interface ProjectionUploaderProps {
@@ -26,6 +28,8 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [isFetchingPositions, setIsFetchingPositions] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState(0);
 
   const handleFileSelect = (file: File | null) => {
     if (!file) return;
@@ -67,7 +71,10 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
             const lower = header.toLowerCase().trim();
             if (lower.includes('name') || lower === 'player') autoMapping.name = index.toString();
             if (lower.includes('team')) autoMapping.team = index.toString();
-            if (lower.includes('pos')) autoMapping.positions = index.toString();
+            if (lower.includes('pos') && !lower.includes('opp')) autoMapping.positions = index.toString();
+            if (lower === 'mlbamid' || lower === 'mlbam_id' || lower === 'playerid' || lower === 'mlb_id' || lower === 'idmlbam') {
+              autoMapping.mlbamId = index.toString();
+            }
           });
           setColumnMapping(autoMapping);
           
@@ -115,14 +122,59 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
     setIsDragging(false);
   }, []);
 
-  const handleImport = () => {
-    if (!parsedData || !columnMapping.name || !columnMapping.positions) {
+  const handleImport = async () => {
+    if (!parsedData || !columnMapping.name) {
       toast({
-        title: 'Missing required columns',
-        description: 'Please map Player Name and Position columns',
+        title: 'Missing required column',
+        description: 'Please map the Player Name column',
         variant: 'destructive',
       });
       return;
+    }
+
+    const hasPositions = !!columnMapping.positions;
+    const hasMlbamId = !!columnMapping.mlbamId;
+
+    if (!hasPositions && !hasMlbamId) {
+      toast({
+        title: 'Missing position data',
+        description: 'Please map either Position column or MLBAM ID column to determine player positions',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    let positionsByMlbamId: Map<string, string[]> | null = null;
+
+    if (!hasPositions && hasMlbamId) {
+      setIsFetchingPositions(true);
+      setFetchProgress(0);
+      
+      toast({
+        title: 'Fetching positions from MLB',
+        description: 'Looking up player positions using MLB Stats API...',
+      });
+
+      const mlbamIds = parsedData
+        .map(row => row[parseInt(columnMapping.mlbamId)]?.trim())
+        .filter(id => id && id.length > 0);
+
+      try {
+        positionsByMlbamId = await fetchMultiplePlayerPositions(
+          mlbamIds,
+          (completed, total) => setFetchProgress((completed / total) * 100)
+        );
+      } catch (error) {
+        console.error('Failed to fetch positions:', error);
+        toast({
+          title: 'Position lookup failed',
+          description: 'Could not fetch positions from MLB API. Players will be assigned UTIL.',
+          variant: 'default',
+        });
+        positionsByMlbamId = new Map();
+      }
+      
+      setIsFetchingPositions(false);
     }
 
     const projections: PlayerProjection[] = parsedData
@@ -131,7 +183,7 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
         const stats: Record<string, number> = {};
         
         Object.entries(columnMapping).forEach(([key, colIndex]) => {
-          if (!['name', 'team', 'positions'].includes(key)) {
+          if (!['name', 'team', 'positions', 'mlbamId'].includes(key)) {
             const cellValue = row[parseInt(colIndex)]?.trim() || '';
             const value = parseFloat(cellValue);
             if (!isNaN(value)) {
@@ -140,14 +192,29 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
           }
         });
 
-        const positionsStr = row[parseInt(columnMapping.positions)]?.trim() || '';
-        const positions = positionsStr.split(/[,/]/).map(p => p.trim()).filter(Boolean);
+        let positions: string[] = ['UTIL'];
+        
+        if (hasPositions) {
+          const positionsStr = row[parseInt(columnMapping.positions)]?.trim() || '';
+          const parsedPositions = positionsStr.split(/[,/]/).map(p => p.trim()).filter(Boolean);
+          if (parsedPositions.length > 0) {
+            positions = parsedPositions;
+          }
+        } else if (hasMlbamId && positionsByMlbamId) {
+          const mlbamId = row[parseInt(columnMapping.mlbamId)]?.trim();
+          if (mlbamId && positionsByMlbamId.has(mlbamId)) {
+            positions = positionsByMlbamId.get(mlbamId) || ['UTIL'];
+          }
+        }
+
+        const mlbamId = hasMlbamId ? row[parseInt(columnMapping.mlbamId)]?.trim() : undefined;
 
         return {
           name: row[parseInt(columnMapping.name)]?.trim() || 'Unknown Player',
           team: columnMapping.team ? row[parseInt(columnMapping.team)]?.trim() : undefined,
-          positions: positions.length > 0 ? positions : ['UTIL'],
+          positions,
           stats,
+          mlbamId,
         };
       })
       .filter(p => p.name !== 'Unknown Player' && Object.keys(p.stats).length > 0);
@@ -175,6 +242,8 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
       [statName]: columnIndex,
     }));
   };
+
+  const hasPositionOrMlbamId = columnMapping.positions || columnMapping.mlbamId;
 
   return (
     <Card className="border-card-border shadow-md">
@@ -272,15 +341,43 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium mb-2 block">Position(s) *</Label>
+                  <Label className="text-sm font-medium mb-2 block">
+                    Position(s) {!columnMapping.mlbamId && '*'}
+                  </Label>
                   <Select
-                    value={columnMapping.positions}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, positions: value }))}
+                    value={columnMapping.positions || '__none__'}
+                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, positions: value === '__none__' ? undefined : value }))}
                   >
                     <SelectTrigger data-testid="select-positions-column">
-                      <SelectValue placeholder="Select column" />
+                      <SelectValue placeholder={columnMapping.mlbamId ? "Optional (using MLBAM ID)" : "Select column"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none__">-- No Position Column --</SelectItem>
+                      {headers.map((header, index) => (
+                        <SelectItem key={index} value={index.toString()}>
+                          {header}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {columnMapping.mlbamId && !columnMapping.positions && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Positions will be fetched from MLB Stats API
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium mb-2 block">Team</Label>
+                  <Select
+                    value={columnMapping.team || '__none__'}
+                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, team: value === '__none__' ? undefined : value }))}
+                  >
+                    <SelectTrigger data-testid="select-team-column">
+                      <SelectValue placeholder="Select column (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">-- No Team Column --</SelectItem>
                       {headers.map((header, index) => (
                         <SelectItem key={index} value={index.toString()}>
                           {header}
@@ -291,15 +388,18 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
                 </div>
 
                 <div>
-                  <Label className="text-sm font-medium mb-2 block">Team</Label>
+                  <Label className="text-sm font-medium mb-2 block">
+                    MLBAM ID {!columnMapping.positions && '*'}
+                  </Label>
                   <Select
-                    value={columnMapping.team}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, team: value }))}
+                    value={columnMapping.mlbamId || '__none__'}
+                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, mlbamId: value === '__none__' ? undefined : value }))}
                   >
-                    <SelectTrigger data-testid="select-team-column">
-                      <SelectValue placeholder="Select column (optional)" />
+                    <SelectTrigger data-testid="select-mlbamid-column">
+                      <SelectValue placeholder={columnMapping.positions ? "Optional" : "Required for position lookup"} />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="__none__">-- No MLBAM ID Column --</SelectItem>
                       {headers.map((header, index) => (
                         <SelectItem key={index} value={index.toString()}>
                           {header}
@@ -307,8 +407,22 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
                       ))}
                     </SelectContent>
                   </Select>
+                  {!columnMapping.positions && columnMapping.mlbamId && (
+                    <p className="text-xs text-baseball-navy mt-1">
+                      Will lookup positions via MLB Stats API
+                    </p>
+                  )}
                 </div>
               </div>
+
+              {!hasPositionOrMlbamId && (
+                <div className="p-4 bg-warning/10 border border-warning/30 rounded-md">
+                  <p className="text-sm text-warning-foreground">
+                    Please map either <strong>Position</strong> or <strong>MLBAM ID</strong> column to determine player positions.
+                    If your CSV doesn't have positions, map the MLBAM ID column and positions will be fetched from MLB.
+                  </p>
+                </div>
+              )}
 
               <div className="border-t border-border pt-4">
                 <Label className="text-sm font-medium mb-3 block">Stat Columns (map as many as needed)</Label>
@@ -316,8 +430,9 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
                   {headers.filter((_, idx) => 
                     idx.toString() !== columnMapping.name &&
                     idx.toString() !== columnMapping.positions &&
-                    idx.toString() !== columnMapping.team
-                  ).map((header, index) => {
+                    idx.toString() !== columnMapping.team &&
+                    idx.toString() !== columnMapping.mlbamId
+                  ).map((header) => {
                     const actualIndex = headers.findIndex(h => h === header);
                     const isMapped = Object.values(columnMapping).includes(actualIndex.toString());
                     
@@ -338,6 +453,17 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
                 </div>
               </div>
             </div>
+
+            {isFetchingPositions && (
+              <div className="p-4 bg-baseball-cream rounded-md border border-border space-y-2">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
+                  <span className="text-sm font-medium">Fetching positions from MLB Stats API...</span>
+                </div>
+                <Progress value={fetchProgress} className="h-2" />
+                <p className="text-xs text-muted-foreground">{Math.round(fetchProgress)}% complete</p>
+              </div>
+            )}
 
             {parsedData.length > 0 && (
               <div className="border border-border rounded-lg overflow-hidden">
@@ -375,11 +501,18 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
               <Button
                 onClick={handleImport}
                 size="lg"
-                disabled={!columnMapping.name || !columnMapping.positions}
+                disabled={!columnMapping.name || !hasPositionOrMlbamId || isFetchingPositions}
                 className="bg-baseball-navy hover-elevate active-elevate-2"
                 data-testid="button-import-projections"
               >
-                Import Projections
+                {isFetchingPositions ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Fetching Positions...
+                  </>
+                ) : (
+                  'Import Projections'
+                )}
               </Button>
             </div>
           </div>
