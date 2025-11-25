@@ -9,43 +9,72 @@
   --opaque-button-border-intensity: -8;
   --elevate-1: rgba(0,0,0, .03);
   --elevate-2: rgba(0,0,0, .08);
-  --background: 30 8% 96%;
-  --foreground: 25 12% 15%;
-  --border: 28 6% 88%;
-  --card: 32 10% 94%;
-  --card-foreground: 25 12% 16%;
-  --card-border: 30 8% 90%;
-  --sidebar: 28 12% 92%;
-  --sidebar-foreground: 25 14% 14%;
-  --sidebar-border: 26 10% 86%;
-  --sidebar-primary: 155 45% 28%;
-  --sidebar-primary-foreground: 155 25% 95%;
-  --sidebar-accent: 26 15% 86%;
-  --sidebar-accent-foreground: 25 18% 18%;
-  --sidebar-ring: 155 45% 28%;
-  --popover: 30 14% 90%;
-  --popover-foreground: 25 16% 14%;
-  --popover-border: 28 12% 85%;
-  --primary: 155 45% 28%;
-  --primary-foreground: 155 25% 95%;
-  --secondary: 26 18% 84%;
-  --secondary-foreground: 25 20% 16%;
-  --muted: 28 16% 86%;
-  --muted-foreground: 25 18% 40%;
-  --accent: 32 18% 88%;
-  --accent-foreground: 25 20% 18%;
-  --destructive: 0 65% 32%;
-  --destructive-foreground: 0 40% 96%;
-  --input: 25 15% 72%;
-  --ring: 155 45% 28%;
-  --chart-1: 210 75% 32%;
-  --chart-2: 155 55% 28%;
-  --chart-3: 25 70% 35%;
-  --chart-4: 40 75% 38%;
-  --chart-5: 280 55% 35%;
-  --font-sans: Open Sans, sans-serif;
+  
+  /* Warm parchment backgrounds - baseball card aesthetic */
+  --background: 35 25% 97%;
+  --foreground: 25 30% 15%;
+  --border: 30 18% 82%;
+  --card: 35 30% 95%;
+  --card-foreground: 25 30% 16%;
+  --card-border: 30 22% 85%;
+  
+  /* Rich brown popover */
+  --popover: 30 25% 92%;
+  --popover-foreground: 25 30% 14%;
+  --popover-border: 28 20% 80%;
+  
+  /* Navy primary (for CTA buttons and emphasis) */
+  --primary: 215 55% 30%;
+  --primary-foreground: 35 25% 97%;
+  
+  /* Warm brown secondary */
+  --secondary: 25 28% 75%;
+  --secondary-foreground: 25 30% 18%;
+  
+  /* Muted warm tones */
+  --muted: 32 20% 88%;
+  --muted-foreground: 25 20% 45%;
+  
+  /* Accent - slightly darker cream for contrast */
+  --accent: 32 25% 90%;
+  --accent-foreground: 25 30% 20%;
+  
+  /* Destructive remains similar */
+  --destructive: 0 65% 45%;
+  --destructive-foreground: 0 40% 98%;
+  
+  /* Input with cream background */
+  --input: 30 20% 82%;
+  --ring: 215 55% 30%;
+  
+  /* Baseball-themed custom colors */
+  --baseball-leather: 25 45% 40%;
+  --baseball-leather-dark: 25 50% 32%;
+  --baseball-cream: 35 30% 95%;
+  --baseball-cream-dark: 30 25% 88%;
+  --baseball-navy: 215 55% 30%;
+  --baseball-navy-light: 215 45% 45%;
+  --baseball-green: 145 50% 32%;
+  --baseball-green-dark: 145 55% 25%;
+  
+  /* Value indicators */
+  --inflation: 145 60% 42%;
+  --deflation: 0 70% 55%;
+  --warning: 40 90% 55%;
+  
+  /* Charts */
+  --chart-1: 215 75% 35%;
+  --chart-2: 145 55% 35%;
+  --chart-3: 25 70% 42%;
+  --chart-4: 40 75% 45%;
+  --chart-5: 280 55% 40%;
+  
+  /* Typography - Baseball aesthetic */
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+  --font-mono: 'Roboto Mono', 'JetBrains Mono', monospace;
+  --font-display: 'Bebas Neue', 'Oswald', sans-serif;
+  
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(25 10% 20% / 0.02);
   --shadow-xs: 0px 2px 0px 0px hsl(25 10% 20% / 0.04);
@@ -93,40 +122,59 @@
   --opaque-button-border-intensity: 9;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .09);
-  --background: 25 6% 10%;
-  --foreground: 30 8% 92%;
-  --border: 26 5% 18%;
-  --card: 26 6% 12%;
-  --card-foreground: 30 8% 90%;
-  --card-border: 26 6% 15%;
-  --sidebar: 24 8% 14%;
-  --sidebar-foreground: 30 10% 88%;
-  --sidebar-border: 25 7% 18%;
-  --sidebar-primary: 155 50% 35%;
-  --sidebar-primary-foreground: 155 30% 94%;
-  --sidebar-accent: 26 12% 18%;
-  --sidebar-accent-foreground: 30 12% 86%;
-  --sidebar-ring: 155 50% 35%;
-  --popover: 26 10% 16%;
-  --popover-foreground: 30 10% 88%;
-  --popover-border: 26 8% 20%;
-  --primary: 155 50% 32%;
-  --primary-foreground: 155 30% 94%;
-  --secondary: 26 14% 20%;
-  --secondary-foreground: 30 12% 84%;
-  --muted: 26 12% 20%;
-  --muted-foreground: 30 10% 62%;
-  --accent: 28 14% 18%;
-  --accent-foreground: 30 14% 84%;
-  --destructive: 0 68% 30%;
-  --destructive-foreground: 0 45% 94%;
-  --input: 28 12% 32%;
-  --ring: 155 50% 35%;
-  --chart-1: 210 80% 68%;
-  --chart-2: 155 60% 65%;
-  --chart-3: 25 75% 72%;
-  --chart-4: 40 80% 68%;
-  --chart-5: 280 60% 70%;
+  
+  /* Dark baseball theme */
+  --background: 25 15% 10%;
+  --foreground: 35 20% 92%;
+  --border: 26 10% 22%;
+  --card: 26 12% 14%;
+  --card-foreground: 35 18% 90%;
+  --card-border: 26 10% 18%;
+  
+  --popover: 26 15% 16%;
+  --popover-foreground: 35 18% 88%;
+  --popover-border: 26 12% 22%;
+  
+  /* Lighter navy for dark mode */
+  --primary: 215 60% 45%;
+  --primary-foreground: 35 20% 95%;
+  
+  /* Warm brown for dark mode */
+  --secondary: 25 20% 25%;
+  --secondary-foreground: 35 18% 85%;
+  
+  --muted: 26 15% 22%;
+  --muted-foreground: 35 15% 65%;
+  
+  --accent: 28 18% 20%;
+  --accent-foreground: 35 18% 85%;
+  
+  --destructive: 0 70% 50%;
+  --destructive-foreground: 0 40% 95%;
+  
+  --input: 28 15% 28%;
+  --ring: 215 60% 45%;
+  
+  /* Dark mode baseball colors */
+  --baseball-leather: 25 40% 50%;
+  --baseball-leather-dark: 25 45% 40%;
+  --baseball-cream: 35 25% 85%;
+  --baseball-cream-dark: 30 20% 75%;
+  --baseball-navy: 215 60% 45%;
+  --baseball-navy-light: 215 50% 60%;
+  --baseball-green: 145 55% 45%;
+  --baseball-green-dark: 145 60% 35%;
+  
+  /* Value indicators for dark mode */
+  --inflation: 145 65% 50%;
+  --deflation: 0 75% 60%;
+  --warning: 40 95% 60%;
+  
+  --chart-1: 215 75% 60%;
+  --chart-2: 145 60% 55%;
+  --chart-3: 25 70% 65%;
+  --chart-4: 40 75% 62%;
+  --chart-5: 280 60% 65%;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.05);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.08);
   --shadow-sm: 0px 2px 0px 0px hsl(0 0% 0% / 0.10), 0px 1px 2px -1px hsl(0 0% 0% / 0.12);
