@@ -1,0 +1,386 @@
+# Fantasy Baseball Auction Value Calculator — Build Prompt
+
+## Overview
+
+Build a polished, production-grade React application that helps fantasy baseball managers generate custom auction draft values based on their specific league settings, then manage live draft inflation tracking.
+
+---
+
+## Design Direction
+
+**Tone**: Baseball card meets modern fintech — nostalgic warmth with sharp, precise data visualization. Think vintage baseball card typography paired with clean, modern data tables.
+
+**Color Palette**: 
+- Rich baseball leather browns and warm creams for nostalgia
+- Crisp navy and forest green accents for data emphasis
+- Warm paper/parchment backgrounds that feel like a well-worn scouting report
+
+**Typography**: 
+- A characterful display font for headers (think classic sports typography — condensed, bold, with personality)
+- A highly readable monospace or tabular font for numbers and data tables
+- Clean sans-serif for body text
+
+**Vibe**: This should feel like a tool a serious fantasy baseball analyst would *love* to use — professional enough for hardcore number-crunchers, but warm and inviting enough that it doesn't feel like a spreadsheet.
+
+---
+
+## Application Structure
+
+### Page 1: League Settings & Value Generator
+
+This is the setup page where users configure their league and generate auction values.
+
+#### Section A: League Configuration
+
+**League Basics**
+- League name (optional, for saving/reference)
+- Number of teams (dropdown: 8, 10, 12, 14, 16, or custom input)
+- Auction budget per team (default $260, allow custom)
+- Total roster spots per team
+
+**Position Requirements**
+Allow users to specify how many of each position they need to draft:
+- C (Catcher)
+- 1B (First Base)
+- 2B (Second Base)
+- 3B (Third Base)
+- SS (Shortstop)
+- OF (Outfield) — typically 3-5 slots
+- UTIL/DH (Utility)
+- MI (Middle Infield — 2B/SS eligible)
+- CI (Corner Infield — 1B/3B eligible)
+- SP (Starting Pitcher)
+- RP (Relief Pitcher)
+- P (Pitcher — SP/RP eligible)
+- Bench spots
+
+Display a running count: "Total roster spots configured: X" with validation against the total roster spots setting.
+
+#### Section B: Scoring Format Selection
+
+Provide three mutually exclusive scoring format options with a clean tab or card-based selector:
+
+**Option 1: Rotisserie (Categories)**
+
+When selected, show a category picker with common roto categories:
+
+*Hitting Categories* (checkboxes):
+- R (Runs)
+- HR (Home Runs)
+- RBI (Runs Batted In)
+- SB (Stolen Bases)
+- AVG (Batting Average)
+- OBP (On-Base Percentage)
+- SLG (Slugging Percentage)
+- OPS (On-Base Plus Slugging)
+- TB (Total Bases)
+- H (Hits)
+- BB (Walks)
+- K (Strikeouts — negative for hitters)
+- Custom category input
+
+*Pitching Categories* (checkboxes):
+- W (Wins)
+- SV (Saves)
+- K (Strikeouts)
+- ERA (Earned Run Average)
+- WHIP (Walks + Hits per Inning Pitched)
+- QS (Quality Starts)
+- HLD (Holds)
+- IP (Innings Pitched)
+- K/9 (Strikeouts per 9 innings)
+- K/BB (Strikeout to Walk ratio)
+- Custom category input
+
+**Option 2: Head-to-Head Categories**
+
+Same category selection interface as Roto, but with an explanatory note: "Each week you'll face an opponent. Win each category to earn points toward playoff seeding."
+
+**Option 3: Head-to-Head Points**
+
+When selected, show a points configuration panel:
+
+*Hitting Point Values* (number inputs with +/- steppers):
+| Category | Default | Input |
+|----------|---------|-------|
+| Single | +1 | [___] |
+| Double | +2 | [___] |
+| Triple | +3 | [___] |
+| Home Run | +4 | [___] |
+| Run | +1 | [___] |
+| RBI | +1 | [___] |
+| Walk | +1 | [___] |
+| Stolen Base | +2 | [___] |
+| Caught Stealing | -1 | [___] |
+| Strikeout | -0.5 | [___] |
+| Hit By Pitch | +1 | [___] |
+
+*Pitching Point Values*:
+| Category | Default | Input |
+|----------|---------|-------|
+| Inning Pitched | +3 | [___] |
+| Win | +5 | [___] |
+| Loss | -3 | [___] |
+| Save | +5 | [___] |
+| Earned Run | -2 | [___] |
+| Hit Allowed | -1 | [___] |
+| Walk Allowed | -1 | [___] |
+| Strikeout | +1 | [___] |
+| Quality Start | +3 | [___] |
+| Complete Game | +3 | [___] |
+| Shutout | +5 | [___] |
+| No Hitter | +10 | [___] |
+
+Include preset buttons: "ESPN Default", "Yahoo Default", "Fantrax Default", "Custom"
+
+#### Section C: Player Projections Upload
+
+**CSV Upload Interface**
+- Drag-and-drop zone with a baseball-themed illustration
+- "Upload your projections" headline
+- Support for multiple files (separate hitter/pitcher files common)
+- File format guidance tooltip
+
+**CSV Mapping Interface**
+After upload, show a smart column mapper:
+- Auto-detect common column names (Name, Team, AB, R, HR, etc.)
+- Allow manual mapping via dropdowns for each detected column
+- Show a preview of first 5 rows with mapped columns highlighted
+- Required fields indicator: Player Name, Position(s), and relevant stat columns
+
+**Supported projection sources** (show logos/badges):
+- Steamer
+- ZiPS
+- ATC
+- THE BAT / THE BAT X
+- PECOTA
+- Custom/manual projections
+
+#### Section D: Value Calculation Settings
+
+**Calculation Method**
+- SGP (Standings Gain Points) — recommended for roto
+- z-Score based — works for all formats
+- Points Above Replacement
+- Dollar value per point
+
+**Replacement Level Settings**
+- Auto-calculate based on league size and roster spots
+- Manual override: "Replacement level player ranks #___"
+
+**Position Scarcity Adjustments**
+- Toggle: "Apply position scarcity multipliers"
+- When enabled, show sliders or inputs for each position's scarcity weight
+
+**Split Allocation**
+- Hitter/Pitcher budget split (default 65/35, allow adjustment via slider)
+- Show calculated dollars: "$169 for hitters / $91 for pitchers"
+
+#### Section E: Generate Values Button & Output
+
+**Primary CTA**: Large, satisfying "Generate Auction Values" button
+
+**Output Display**
+After generation, show a comprehensive, sortable, filterable data table:
+
+| Rank | Player | Team | Pos | $ Value | Key Stats... |
+|------|--------|------|-----|---------|---------------|
+
+**Table Features**:
+- Sort by any column
+- Filter by position (multi-select)
+- Search by player name
+- Highlight "value tiers" with subtle background colors
+- Show positional rank (e.g., "1B #3")
+- Expandable rows for full projection details
+
+**Export Options**:
+- Download as CSV
+- Download as PDF (formatted cheat sheet)
+- Copy to clipboard
+- "Send to Draft Room" button → navigates to Page 2 with values loaded
+
+---
+
+### Page 2: Live Draft Room with Inflation Calculator
+
+This is the real-time draft management tool.
+
+#### Section A: Draft Setup (if not coming from Page 1)
+
+- Quick league settings summary
+- Import values from Page 1 or upload pre-generated values CSV
+
+#### Section B: Draft Board Header
+
+**Key Metrics Dashboard** (always visible, updates in real-time):
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  BUDGET REMAINING     PLAYERS LEFT      INFLATION RATE    AVG $/PLAYER│
+│      $187              234               +12.4%             $4.23     │
+│   (of $260)         (of 312)           ↑ from 0%         (adj: $4.75)│
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+#### Section C: Player Draft Entry
+
+**Quick Draft Interface**
+Two ways to record a drafted player:
+
+1. **Search & Select**
+   - Type-ahead search box
+   - Shows player name, position, your projected value
+   - Click to select
+
+2. **Click from Table**
+   - Click any undrafted player row to select them
+
+**After Selection, Prompt**:
+```
+┌──────────────────────────────────────────────┐
+│  Mike Trout (OF) — Your Value: $42          │
+│                                              │
+│  Actual Draft Price: $[_______]             │
+│                                              │
+│  Drafted by: [Your Team ▼]  (optional)       │
+│                                              │
+│  [ Cancel ]              [ Confirm Draft ]   │
+└──────────────────────────────────────────────┘
+```
+
+#### Section D: Inflation-Adjusted Player Values Table
+
+**The Core Table** — this is where the magic happens:
+
+| Player | Pos | Orig $ | Adj $ | Δ | Status |
+|--------|-----|--------|-------|---|--------|
+| Aaron Judge | OF | $38 | $42.71 | +$4.71 | Available |
+| Shohei Ohtani | DH/SP | $52 | $58.42 | +$6.42 | Available |
+| Ronald Acuña | OF | — | — | — | DRAFTED ($54) |
+
+**Inflation Calculation Logic**:
+```
+Remaining Budget Pool = (Total League Budget) - (Total $ Spent So Far)
+Remaining Value Pool = Sum of (Original Values) for undrafted players
+Inflation Rate = (Remaining Budget Pool / Remaining Value Pool) - 1
+Adjusted Value = Original Value × (1 + Inflation Rate)
+```
+
+**Table Features**:
+- Drafted players grayed out but visible (toggle to hide)
+- Sort by Adjusted Value (default), Original Value, Position
+- Filter by position
+- Search undrafted players
+- "My Targets" flag — star players to highlight them
+- Color-code value changes: green for inflation (costs more), red for deflation (bargains)
+
+#### Section E: Draft Log
+
+**Collapsible Panel** showing draft history:
+
+```
+#47  Mike Trout (OF)      You: $42    Actual: $48    +$6 overpay
+#46  Gerrit Cole (SP)     You: $28    Actual: $31    +$3 overpay  
+#45  Julio Rodriguez (OF) You: $35    Actual: $29    -$6 VALUE!
+...
+```
+
+- Undo last pick button
+- Clear all button (with confirmation)
+- Export draft log
+
+#### Section F: Positional Needs Tracker (Optional Enhancement)
+
+If user configured roster requirements:
+
+```
+┌─────────────────────────────────────────┐
+│  YOUR ROSTER NEEDS                       │
+│  C: 0/1  │  1B: 0/1  │  OF: 1/3         │
+│  2B: 0/1 │  SS: 1/1 ✓│  SP: 2/5         │
+│  3B: 0/1 │  MI: 0/1  │  RP: 0/2         │
+│                                          │
+│  Budget Remaining: $187                  │
+│  Roster Spots Left: 19                   │
+│  Min $ per remaining spot: $9.84         │
+└─────────────────────────────────────────┘
+```
+
+---
+
+## Technical Implementation Notes
+
+### State Management
+- Use React Context or Zustand for global state (league settings, player values, draft state)
+- Persist to localStorage so users don't lose their draft progress on refresh
+- Consider IndexedDB for larger projection datasets
+
+### CSV Parsing
+- Use PapaParse for robust CSV handling
+- Handle edge cases: quoted commas, special characters in names, various encodings
+
+### Calculations
+- Memoize expensive calculations (inflation adjustments affect all players)
+- Use Web Workers for initial value generation if dataset is large
+- Debounce inflation recalculations during rapid draft entry
+
+### Data Validation
+- Validate CSV structure before accepting
+- Warn on missing required columns
+- Handle duplicate player names gracefully
+
+### Responsive Design
+- Desktop-first (this is a draft day tool, likely on a laptop)
+- But ensure tablet usability for those following along on iPad
+- Mobile: at minimum, show inflation-adjusted values table
+
+---
+
+## Polish & Delight Details
+
+### Micro-interactions
+- Satisfying button press animations
+- Smooth table row transitions when players are drafted
+- Subtle confetti or highlight when you land a "value pick" (actual < projected)
+- Number counters that animate when values update
+
+### Empty States
+- Friendly illustrations for "No projections uploaded yet"
+- Helpful prompts: "Start by configuring your league settings above"
+
+### Error Handling
+- Friendly error messages with suggested fixes
+- "This doesn't look like a projections file. Expected columns like R, HR, RBI..."
+- Auto-recovery from localStorage if possible
+
+### Onboarding
+- Optional first-time walkthrough tooltip tour
+- "Sample League" button to load demo data and explore
+
+### Accessibility
+- Proper ARIA labels on all interactive elements
+- Keyboard navigation through tables and forms
+- High contrast mode toggle
+- Screen reader friendly value announcements
+
+---
+
+## Bonus Features (If Time Permits)
+
+1. **Multi-League Support**: Save multiple league configurations
+2. **Draft Sharing**: Generate a shareable link to your value sheet (read-only)
+3. **Tier Visualization**: Visual tier breaks chart showing value clusters
+4. **Projection Blending**: Upload multiple projection sources and weight them
+5. **Keeper League Support**: Mark keepers and their costs, adjust available budget
+6. **Mock Draft Mode**: Auto-simulate other team picks at random/ADP for practice
+7. **Dark Mode**: Toggle for late-night draft prep sessions
+8. **Print-Friendly Cheat Sheet**: Optimized CSS for printing your values
+
+---
+
+## Summary
+
+This app should feel like your secret weapon on draft day — the tool that makes you feel prepared, informed, and confident. Every interaction should feel snappy, every number should be trustworthy, and the inflation calculator should update in real-time so you always know exactly what each player is worth as the draft unfolds.
+
+Build something you'd be proud to use in your own league. ⚾💰
