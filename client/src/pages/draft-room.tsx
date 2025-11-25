@@ -63,7 +63,7 @@ export default function DraftRoom() {
         JSON.stringify(adjustedValues) !== JSON.stringify(prev) ? adjustedValues : prev
       );
     }
-  }, [draftState?.picks, leagueSettings, playerValues.length]);
+  }, [draftState?.picks, leagueSettings]);
 
   const handlePlayerSelect = (player: PlayerValue) => {
     setSelectedPlayer(player);

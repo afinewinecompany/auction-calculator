@@ -7,6 +7,33 @@ import type {
   DraftPick,
 } from '@shared/schema';
 
+interface CategoryStats {
+  mean: number;
+  stdDev: number;
+  values: number[];
+}
+
+function calculateReplacementLevel(
+  leagueSettings: LeagueSettings,
+  type: 'hitter' | 'pitcher'
+): number {
+  const { teamCount, positionRequirements } = leagueSettings;
+  
+  if (type === 'hitter') {
+    const hitterPositions = ['C', '1B', '2B', '3B', 'SS', 'OF', 'MI', 'CI', 'UTIL'];
+    const hitterSpots = hitterPositions.reduce((sum, pos) => 
+      sum + (positionRequirements[pos as keyof typeof positionRequirements] || 0), 0
+    );
+    return Math.ceil(teamCount * hitterSpots * 1.3);
+  } else {
+    const pitcherPositions = ['SP', 'RP', 'P'];
+    const pitcherSpots = pitcherPositions.reduce((sum, pos) => 
+      sum + (positionRequirements[pos as keyof typeof positionRequirements] || 0), 0
+    );
+    return Math.ceil(teamCount * pitcherSpots * 1.3);
+  }
+}
+
 export function calculatePlayerValues(
   projections: PlayerProjection[],
   leagueSettings: LeagueSettings,
@@ -29,15 +56,18 @@ export function calculatePlayerValues(
     p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos))
   );
 
+  const hitterReplacementLevel = calculateReplacementLevel(leagueSettings, 'hitter');
+  const pitcherReplacementLevel = calculateReplacementLevel(leagueSettings, 'pitcher');
+
   let hitterValues: PlayerValue[] = [];
   let pitcherValues: PlayerValue[] = [];
 
   if (settings.method === 'z-score') {
-    hitterValues = calculateZScoreValues(hitters, hitterBudget, 'hitter', scoringFormat);
-    pitcherValues = calculateZScoreValues(pitchers, pitcherBudget, 'pitcher', scoringFormat);
+    hitterValues = calculateZScoreValues(hitters, hitterBudget, 'hitter', scoringFormat, hitterReplacementLevel);
+    pitcherValues = calculateZScoreValues(pitchers, pitcherBudget, 'pitcher', scoringFormat, pitcherReplacementLevel);
   } else {
-    hitterValues = calculateSGPValues(hitters, hitterBudget, leagueSettings, 'hitter', scoringFormat);
-    pitcherValues = calculateSGPValues(pitchers, pitcherBudget, leagueSettings, 'pitcher', scoringFormat);
+    hitterValues = calculateSGPValues(hitters, hitterBudget, leagueSettings, 'hitter', scoringFormat, hitterReplacementLevel);
+    pitcherValues = calculateSGPValues(pitchers, pitcherBudget, leagueSettings, 'pitcher', scoringFormat, pitcherReplacementLevel);
   }
 
   const allValues = [...hitterValues, ...pitcherValues]
@@ -55,7 +85,8 @@ function calculateZScoreValues(
   players: PlayerProjection[],
   budget: number,
   type: 'hitter' | 'pitcher',
-  scoringFormat: ScoringFormat
+  scoringFormat: ScoringFormat,
+  replacementLevel: number
 ): PlayerValue[] {
   if (players.length === 0) return [];
 
@@ -71,25 +102,32 @@ function calculateZScoreValues(
     categories.forEach(cat => categoryWeights[cat] = 1);
   }
 
-  const zScores = players.map(player => {
+  const categoryStats: Record<string, CategoryStats> = {};
+  
+  categories.forEach(category => {
+    const values = players
+      .map(p => p.stats[category] || 0)
+      .filter(v => !isNaN(v));
+    
+    if (values.length < 2) return;
+    
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    
+    categoryStats[category] = { mean, stdDev, values };
+  });
+
+  const zScores = players.map((player, index) => {
     let totalWeightedZScore = 0;
     let totalWeight = 0;
     
     categories.forEach(category => {
-      const values = players
-        .map(p => p.stats[category] || 0)
-        .filter(v => !isNaN(v));
-      
-      if (values.length < 2) return;
-      
-      const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-      const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
-      const stdDev = Math.sqrt(variance);
-      
-      if (stdDev === 0) return;
+      const stats = categoryStats[category];
+      if (!stats || stats.stdDev === 0) return;
       
       const playerValue = player.stats[category] || 0;
-      const zScore = (playerValue - mean) / stdDev;
+      const zScore = (playerValue - stats.mean) / stats.stdDev;
       
       const weight = Math.abs(categoryWeights[category] || 1);
       const isNegativeStat = category.toLowerCase().includes('era') || 
@@ -106,40 +144,60 @@ function calculateZScoreValues(
     return {
       player,
       totalZScore: avgZScore,
+      index,
     };
   });
 
-  const minZScore = Math.min(...zScores.map(z => z.totalZScore));
-  const adjustedScores = zScores.map(z => ({
+  const sortedByZScore = [...zScores].sort((a, b) => b.totalZScore - a.totalZScore);
+  
+  const topPlayers = sortedByZScore.slice(0, replacementLevel);
+  const replacementZScore = topPlayers[topPlayers.length - 1]?.totalZScore || 0;
+  
+  const aboveReplacementScores = topPlayers.map(z => ({
     ...z,
-    adjustedScore: Math.max(0, z.totalZScore - minZScore + 0.5),
+    aboveReplacement: Math.max(0.01, z.totalZScore - replacementZScore + 1),
   }));
 
-  const totalValue = adjustedScores.reduce((sum, z) => sum + z.adjustedScore, 0);
+  const totalValue = aboveReplacementScores.reduce((sum, z) => sum + z.aboveReplacement, 0);
   
   if (totalValue === 0) {
-    return players.map((player, index) => ({
-      id: `${type}-${index}`,
-      name: player.name,
-      team: player.team,
-      positions: player.positions,
+    return sortedByZScore.slice(0, replacementLevel).map((z, idx) => ({
+      id: `${type}-${z.index}`,
+      name: z.player.name,
+      team: z.player.team,
+      positions: z.player.positions,
       originalValue: 1,
       rank: 0,
-      stats: player.stats,
+      stats: z.player.stats,
       isDrafted: false,
     }));
   }
   
-  return adjustedScores.map((z, index) => ({
-    id: `${type}-${index}`,
+  const valuedPlayers = aboveReplacementScores.map(z => ({
+    id: `${type}-${z.index}`,
     name: z.player.name,
     team: z.player.team,
     positions: z.player.positions,
-    originalValue: Math.max(1, Math.round((z.adjustedScore / totalValue) * budget)),
+    originalValue: Math.max(1, Math.round((z.aboveReplacement / totalValue) * budget)),
     rank: 0,
     stats: z.player.stats,
     isDrafted: false,
   }));
+  
+  const belowReplacementPlayers = zScores
+    .filter(z => !topPlayers.some(t => t.index === z.index))
+    .map(z => ({
+      id: `${type}-${z.index}`,
+      name: z.player.name,
+      team: z.player.team,
+      positions: z.player.positions,
+      originalValue: 1,
+      rank: 0,
+      stats: z.player.stats,
+      isDrafted: false,
+    }));
+  
+  return [...valuedPlayers, ...belowReplacementPlayers];
 }
 
 function calculateSGPValues(
@@ -147,7 +205,8 @@ function calculateSGPValues(
   budget: number,
   leagueSettings: LeagueSettings,
   type: 'hitter' | 'pitcher',
-  scoringFormat: ScoringFormat
+  scoringFormat: ScoringFormat,
+  replacementLevel: number
 ): PlayerValue[] {
   if (players.length === 0) return [];
 
@@ -165,33 +224,40 @@ function calculateSGPValues(
 
   const teamCount = leagueSettings.teamCount;
   
-  const sgpValues = players.map(player => {
+  const categoryRanges: Record<string, { top: number; bottom: number; sgpPerUnit: number }> = {};
+  
+  categories.forEach(category => {
+    const values = players
+      .map(p => p.stats[category] || 0)
+      .filter(v => !isNaN(v))
+      .sort((a, b) => b - a);
+    
+    if (values.length < 2) return;
+    
+    const topValue = values[0];
+    const bottomValue = values[values.length - 1];
+    const standingSpread = Math.abs(topValue - bottomValue);
+    const sgpPerUnit = standingSpread > 0 ? teamCount / standingSpread : 0;
+    
+    categoryRanges[category] = { top: topValue, bottom: bottomValue, sgpPerUnit };
+  });
+  
+  const sgpValues = players.map((player, index) => {
     let totalWeightedSGP = 0;
     let totalWeight = 0;
     
     categories.forEach(category => {
-      const values = players
-        .map(p => p.stats[category] || 0)
-        .filter(v => !isNaN(v))
-        .sort((a, b) => b - a);
-      
-      if (values.length < 2) return;
+      const range = categoryRanges[category];
+      if (!range || range.sgpPerUnit === 0) return;
       
       const playerValue = player.stats[category] || 0;
-      const topValue = values[0];
-      const bottomValue = values[values.length - 1];
-      const standingSpread = Math.abs(topValue - bottomValue);
-      const standingsPerCategory = teamCount;
-      
-      const sgpPerUnit = standingSpread > 0 ? standingsPerCategory / standingSpread : 0;
-      
       const isNegativeStat = category.toLowerCase().includes('era') || 
                             category.toLowerCase().includes('whip') ||
                             (category.toLowerCase() === 'k' && type === 'hitter');
       
-      const baseValue = isNegativeStat ? bottomValue : topValue;
+      const baseValue = isNegativeStat ? range.bottom : range.top;
       const playerDiff = isNegativeStat ? baseValue - playerValue : playerValue - baseValue;
-      const sgp = playerDiff * sgpPerUnit;
+      const sgp = playerDiff * range.sgpPerUnit;
       
       const weight = Math.abs(categoryWeights[category] || 1);
       totalWeightedSGP += sgp * weight;
@@ -200,40 +266,59 @@ function calculateSGPValues(
 
     const avgSGP = totalWeight > 0 ? totalWeightedSGP / totalWeight : 0;
     
-    return { player, sgp: avgSGP };
+    return { player, sgp: avgSGP, index };
   });
 
-  const minSGP = Math.min(...sgpValues.map(s => s.sgp));
-  const adjustedSGP = sgpValues.map(s => ({
+  const sortedBySGP = [...sgpValues].sort((a, b) => b.sgp - a.sgp);
+  
+  const topPlayers = sortedBySGP.slice(0, replacementLevel);
+  const replacementSGP = topPlayers[topPlayers.length - 1]?.sgp || 0;
+  
+  const aboveReplacementScores = topPlayers.map(s => ({
     ...s,
-    adjustedSGP: Math.max(0, s.sgp - minSGP + 0.5),
+    aboveReplacement: Math.max(0.01, s.sgp - replacementSGP + 1),
   }));
 
-  const totalSGP = adjustedSGP.reduce((sum, s) => sum + s.adjustedSGP, 0);
+  const totalSGP = aboveReplacementScores.reduce((sum, s) => sum + s.aboveReplacement, 0);
   
   if (totalSGP === 0) {
-    return players.map((player, index) => ({
-      id: `${type}-${index}`,
-      name: player.name,
-      team: player.team,
-      positions: player.positions,
+    return sortedBySGP.slice(0, replacementLevel).map((s, idx) => ({
+      id: `${type}-${s.index}`,
+      name: s.player.name,
+      team: s.player.team,
+      positions: s.player.positions,
       originalValue: 1,
       rank: 0,
-      stats: player.stats,
+      stats: s.player.stats,
       isDrafted: false,
     }));
   }
   
-  return adjustedSGP.map((s, index) => ({
-    id: `${type}-${index}`,
+  const valuedPlayers = aboveReplacementScores.map(s => ({
+    id: `${type}-${s.index}`,
     name: s.player.name,
     team: s.player.team,
     positions: s.player.positions,
-    originalValue: Math.max(1, Math.round((s.adjustedSGP / totalSGP) * budget)),
+    originalValue: Math.max(1, Math.round((s.aboveReplacement / totalSGP) * budget)),
     rank: 0,
     stats: s.player.stats,
     isDrafted: false,
   }));
+  
+  const belowReplacementPlayers = sgpValues
+    .filter(s => !topPlayers.some(t => t.index === s.index))
+    .map(s => ({
+      id: `${type}-${s.index}`,
+      name: s.player.name,
+      team: s.player.team,
+      positions: s.player.positions,
+      originalValue: 1,
+      rank: 0,
+      stats: s.player.stats,
+      isDrafted: false,
+    }));
+  
+  return [...valuedPlayers, ...belowReplacementPlayers];
 }
 
 export function calculateInflation(
