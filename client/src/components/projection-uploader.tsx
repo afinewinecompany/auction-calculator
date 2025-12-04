@@ -147,6 +147,19 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
 
+    const statColumns = Object.keys(columnMapping).filter(
+      key => !['name', 'team', 'positions', 'mlbamId'].includes(key)
+    );
+    
+    if (statColumns.length === 0) {
+      toast({
+        title: 'No stat columns mapped',
+        description: 'Click on stat column buttons below to add them (e.g., HR, R, RBI, ERA, W, etc.)',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     let positionsByMlbamId: Map<string, string[]> | null = null;
 
     if (!hasPositions && hasMlbamId) {
@@ -477,7 +490,12 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                   )}
 
                   <div className="border-t border-border pt-4">
-                    <Label className="text-sm font-medium mb-3 block">Stat Columns (map as many as needed)</Label>
+                    <div className="flex items-center justify-between mb-3">
+                      <Label className="text-sm font-medium">Stat Columns (click to add) *</Label>
+                      <span className="text-xs text-muted-foreground font-mono">
+                        {Object.keys(columnMapping).filter(k => !['name', 'team', 'positions', 'mlbamId'].includes(k)).length} mapped
+                      </span>
+                    </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                       {headers.filter((_, idx) => 
                         idx.toString() !== columnMapping.name &&
@@ -510,7 +528,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                   <div className="p-4 bg-baseball-cream rounded-md border border-border space-y-2">
                     <div className="flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
-                      <span className="text-sm font-medium">Fetching positions from MLB Stats API...</span>
+                      <span className="text-sm font-medium">Looking up player positions...</span>
                     </div>
                     <Progress value={fetchProgress} className="h-2" />
                     <p className="text-xs text-muted-foreground">{Math.round(fetchProgress)}% complete</p>
