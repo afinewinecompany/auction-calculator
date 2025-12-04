@@ -11,7 +11,7 @@ import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Upload, FileText, Check, X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { fetchMultiplePlayerPositions } from '@/lib/mlb-api';
+import { lookupPlayerPositions } from '@/lib/position-lookup';
 import type { PlayerProjection } from '@shared/schema';
 
 interface ProjectionUploaderProps {
@@ -154,8 +154,8 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       setFetchProgress(0);
       
       toast({
-        title: 'Fetching positions from MLB',
-        description: 'Looking up player positions using MLB Stats API...',
+        title: 'Looking up positions',
+        description: 'Matching player positions from reference data...',
       });
 
       const mlbamIds = parsedData
@@ -163,15 +163,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
         .filter(id => id && id.length > 0);
 
       try {
-        positionsByMlbamId = await fetchMultiplePlayerPositions(
+        positionsByMlbamId = await lookupPlayerPositions(
           mlbamIds,
           (completed, total) => setFetchProgress((completed / total) * 100)
         );
       } catch (error) {
-        console.error('Failed to fetch positions:', error);
+        console.error('Failed to lookup positions:', error);
         toast({
           title: 'Position lookup failed',
-          description: 'Could not fetch positions from MLB API. Players will be assigned UTIL.',
+          description: 'Could not match positions. Players will be assigned UTIL.',
           variant: 'default',
         });
         positionsByMlbamId = new Map();
@@ -374,7 +374,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       </Label>
                       <Select
                         value={columnMapping.positions || '__none__'}
-                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, positions: value === '__none__' ? undefined : value }))}
+                        onValueChange={(value) => {
+                          const newMapping = { ...columnMapping };
+                          if (value === '__none__') {
+                            delete newMapping.positions;
+                          } else {
+                            newMapping.positions = value;
+                          }
+                          setColumnMapping(newMapping);
+                        }}
                       >
                         <SelectTrigger data-testid="select-positions-column">
                           <SelectValue placeholder={columnMapping.mlbamId ? "Optional (using MLBAM ID)" : "Select column"} />
@@ -390,7 +398,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       </Select>
                       {columnMapping.mlbamId && !columnMapping.positions && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Positions will be fetched from MLB Stats API
+                          Positions will be looked up from reference data
                         </p>
                       )}
                     </div>
@@ -399,7 +407,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       <Label className="text-sm font-medium mb-2 block">Team</Label>
                       <Select
                         value={columnMapping.team || '__none__'}
-                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, team: value === '__none__' ? undefined : value }))}
+                        onValueChange={(value) => {
+                          const newMapping = { ...columnMapping };
+                          if (value === '__none__') {
+                            delete newMapping.team;
+                          } else {
+                            newMapping.team = value;
+                          }
+                          setColumnMapping(newMapping);
+                        }}
                       >
                         <SelectTrigger data-testid="select-team-column">
                           <SelectValue placeholder="Select column (optional)" />
@@ -421,7 +437,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       </Label>
                       <Select
                         value={columnMapping.mlbamId || '__none__'}
-                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, mlbamId: value === '__none__' ? undefined : value }))}
+                        onValueChange={(value) => {
+                          const newMapping = { ...columnMapping };
+                          if (value === '__none__') {
+                            delete newMapping.mlbamId;
+                          } else {
+                            newMapping.mlbamId = value;
+                          }
+                          setColumnMapping(newMapping);
+                        }}
                       >
                         <SelectTrigger data-testid="select-mlbamid-column">
                           <SelectValue placeholder={columnMapping.positions ? "Optional" : "Required for position lookup"} />
@@ -437,7 +461,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       </Select>
                       {!columnMapping.positions && columnMapping.mlbamId && (
                         <p className="text-xs text-baseball-navy mt-1">
-                          Will lookup positions via MLB Stats API
+                          Will lookup positions from reference data
                         </p>
                       )}
                     </div>
@@ -447,7 +471,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                     <div className="p-4 bg-warning/10 border border-warning/30 rounded-md">
                       <p className="text-sm text-warning-foreground">
                         Please map either <strong>Position</strong> or <strong>MLBAM ID</strong> column to determine player positions.
-                        If your CSV doesn't have positions, map the MLBAM ID column and positions will be fetched from MLB.
+                        If your CSV doesn't have positions, map the MLBAM ID column and positions will be looked up automatically.
                       </p>
                     </div>
                   )}

@@ -69,8 +69,8 @@ Preferred communication style: Simple, everyday language.
 - Dynamic column mapping interface for flexible projection formats
 - Support for both hitting and pitching statistics
 - Sample data available for quick start
-- MLB Stats API integration for automatic position lookup via MLBAM ID
-- Position column is optional when MLBAM ID is provided
+- CSV-based position lookup using MLBAM ID (reference file: attached_assets/mlb_player_positions.csv)
+- Position column is optional when MLBAM ID is provided - positions will be auto-matched from reference data
 
 ### Backend Architecture
 
