@@ -8,34 +8,44 @@ import { ValueCalculationPanel } from '@/components/value-calculation-panel';
 import { PlayerValuesTable } from '@/components/player-values-table';
 import { Button } from '@/components/ui/button';
 import { ArrowRight } from 'lucide-react';
-import type { LeagueSettings, ScoringFormat, ValueCalculationSettings } from '@shared/schema';
 
 export default function LeagueSettingsPage() {
   const [, navigate] = useLocation();
   const { 
     leagueSettings, 
     scoringFormat, 
-    valueCalculationSettings,
     playerProjections,
     playerValues,
   } = useAppContext();
 
-  const [currentStep, setCurrentStep] = useState<'config' | 'scoring' | 'upload' | 'calculate' | 'results'>('config');
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
+    config: !!leagueSettings,
+    scoring: !!scoringFormat,
+    upload: playerProjections.length > 0,
+    calculate: playerValues.length > 0,
+  });
+
+  const toggleSection = (section: string) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  };
 
   const handleLeagueConfigComplete = () => {
-    setCurrentStep('scoring');
+    setCollapsedSections(prev => ({ ...prev, config: true }));
   };
 
   const handleScoringComplete = () => {
-    setCurrentStep('upload');
+    setCollapsedSections(prev => ({ ...prev, scoring: true }));
   };
 
   const handleUploadComplete = () => {
-    setCurrentStep('calculate');
+    setCollapsedSections(prev => ({ ...prev, upload: true }));
   };
 
   const handleCalculationComplete = () => {
-    setCurrentStep('results');
+    setCollapsedSections(prev => ({ ...prev, calculate: true }));
   };
 
   const handleGoToDraft = () => {
@@ -58,16 +68,20 @@ export default function LeagueSettingsPage() {
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-12 space-y-12">
+      <main className="max-w-7xl mx-auto px-6 py-12 space-y-6">
         <LeagueConfigForm 
           onComplete={handleLeagueConfigComplete}
           isComplete={canProceedToScoring}
+          isCollapsed={collapsedSections.config}
+          onToggle={() => toggleSection('config')}
         />
 
         {canProceedToScoring && (
           <ScoringFormatSelector 
             onComplete={handleScoringComplete}
             isComplete={canProceedToUpload}
+            isCollapsed={collapsedSections.scoring}
+            onToggle={() => toggleSection('scoring')}
           />
         )}
 
@@ -75,6 +89,8 @@ export default function LeagueSettingsPage() {
           <ProjectionUploader 
             onComplete={handleUploadComplete}
             isComplete={canProceedToCalculate}
+            isCollapsed={collapsedSections.upload}
+            onToggle={() => toggleSection('upload')}
           />
         )}
 
@@ -82,12 +98,14 @@ export default function LeagueSettingsPage() {
           <ValueCalculationPanel 
             onComplete={handleCalculationComplete}
             isComplete={canProceedToResults}
+            isCollapsed={collapsedSections.calculate}
+            onToggle={() => toggleSection('calculate')}
           />
         )}
 
         {canProceedToResults && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-4">
               <h2 className="font-display text-3xl font-bold text-baseball-leather tracking-tight">
                 AUCTION VALUES
               </h2>

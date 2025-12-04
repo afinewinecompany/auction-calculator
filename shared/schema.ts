@@ -113,6 +113,7 @@ export const draftPickSchema = z.object({
   positions: z.array(z.string()),
   projectedValue: z.number(),
   actualPrice: z.number(),
+  isMyBid: z.boolean().default(false),
   draftedBy: z.string().optional(),
   pickNumber: z.number(),
   timestamp: z.number(),

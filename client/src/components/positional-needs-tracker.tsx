@@ -1,7 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { useAppContext } from '@/lib/app-context';
 import type { LeagueSettings, DraftState, PlayerValue } from '@shared/schema';
 
 interface PositionalNeedsTrackerProps {
@@ -23,13 +22,8 @@ export function PositionalNeedsTracker({
   draftState,
   playerValues,
 }: PositionalNeedsTrackerProps) {
-  const { myTeamName } = useAppContext();
-  
   const myTeamBudget = leagueSettings.auctionBudget;
-  const myPicks = draftState.picks.filter(p => 
-    p.draftedBy === myTeamName || 
-    p.draftedBy?.toLowerCase() === myTeamName.toLowerCase()
-  );
+  const myPicks = draftState.picks.filter(p => p.isMyBid === true);
   const myTeamSpent = myPicks.reduce((sum, p) => sum + p.actualPrice, 0);
   const remainingBudget = myTeamBudget - myTeamSpent;
   

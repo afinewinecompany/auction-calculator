@@ -16,16 +16,19 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Check, Sparkles } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Check, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { SCORING_PRESETS, getPresetById } from '@/lib/scoring-presets';
 import { useToast } from '@/hooks/use-toast';
 
 interface ScoringFormatSelectorProps {
   onComplete: () => void;
   isComplete: boolean;
+  isCollapsed?: boolean;
+  onToggle?: () => void;
 }
 
-export function ScoringFormatSelector({ onComplete, isComplete }: ScoringFormatSelectorProps) {
+export function ScoringFormatSelector({ onComplete, isComplete, isCollapsed = false, onToggle }: ScoringFormatSelectorProps) {
   const { scoringFormat, setScoringFormat } = useAppContext();
   const { toast } = useToast();
   
@@ -113,110 +116,142 @@ export function ScoringFormatSelector({ onComplete, isComplete }: ScoringFormatS
     onComplete();
   };
 
+  const getSummary = () => {
+    if (!scoringFormat) return null;
+    const typeLabel = scoringFormat.type === 'roto' ? 'Rotisserie' : 
+                      scoringFormat.type === 'h2h-categories' ? 'H2H Categories' : 'H2H Points';
+    if (scoringFormat.type === 'h2h-points') {
+      return `${typeLabel}`;
+    }
+    return `${typeLabel}: ${scoringFormat.hittingCategories?.length || 0}x${scoringFormat.pitchingCategories?.length || 0}`;
+  };
+
   return (
-    <Card className="border-card-border shadow-md">
-      <CardHeader className="bg-baseball-leather text-baseball-cream pb-6">
-        <CardTitle className="font-display text-3xl tracking-tight flex items-center gap-3">
-          {isComplete && <Check className="h-7 w-7 text-baseball-green" />}
-          SCORING FORMAT
-        </CardTitle>
-        <CardDescription className="text-baseball-cream/80 text-base">
-          Choose how your league scores fantasy performance
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="pt-8 pb-8">
-        <div className="mb-8 p-4 bg-muted/50 rounded-lg border border-border">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-baseball-gold" />
-              <span className="font-semibold">Quick Start</span>
+    <Collapsible open={!isCollapsed} onOpenChange={() => onToggle?.()}>
+      <Card className="border-card-border shadow-md">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="bg-baseball-leather text-baseball-cream pb-6 cursor-pointer hover-elevate">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {isComplete && <Check className="h-7 w-7 text-baseball-green" />}
+                <div>
+                  <CardTitle className="font-display text-3xl tracking-tight">
+                    SCORING FORMAT
+                  </CardTitle>
+                  {isCollapsed && isComplete && (
+                    <p className="text-baseball-cream/80 text-sm mt-1 font-mono">{getSummary()}</p>
+                  )}
+                  {!isCollapsed && (
+                    <CardDescription className="text-baseball-cream/80 text-base mt-1">
+                      Choose how your league scores fantasy performance
+                    </CardDescription>
+                  )}
+                </div>
+              </div>
+              {isCollapsed ? (
+                <ChevronRight className="h-6 w-6 text-baseball-cream/80" />
+              ) : (
+                <ChevronDown className="h-6 w-6 text-baseball-cream/80" />
+              )}
             </div>
-            <Select value={selectedPreset} onValueChange={handlePresetLoad}>
-              <SelectTrigger className="w-64" data-testid="select-scoring-preset">
-                <SelectValue placeholder="Load a preset..." />
-              </SelectTrigger>
-              <SelectContent>
-                {['ESPN', 'Yahoo', 'Fantrax', 'Ottoneu'].map(platform => {
-                  const platformPresets = SCORING_PRESETS.filter(p => p.platform === platform);
-                  if (platformPresets.length === 0) return null;
-                  return (
-                    <div key={platform}>
-                      <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
-                        {platform}
-                      </div>
-                      {platformPresets.map(preset => (
-                        <SelectItem 
-                          key={preset.id} 
-                          value={preset.id}
-                          data-testid={`select-preset-${preset.id}`}
-                        >
-                          {preset.name}
-                        </SelectItem>
-                      ))}
-                    </div>
-                  );
-                })}
-              </SelectContent>
-            </Select>
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Select a platform preset to auto-fill scoring settings, then customize as needed
-          </p>
-        </div>
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-8 pb-8">
+            <div className="mb-8 p-4 bg-muted/50 rounded-lg border border-border">
+              <div className="flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-5 w-5 text-baseball-gold" />
+                  <span className="font-semibold">Quick Start</span>
+                </div>
+                <Select value={selectedPreset} onValueChange={handlePresetLoad}>
+                  <SelectTrigger className="w-64" data-testid="select-scoring-preset">
+                    <SelectValue placeholder="Load a preset..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {['ESPN', 'Yahoo', 'Fantrax', 'Ottoneu'].map(platform => {
+                      const platformPresets = SCORING_PRESETS.filter(p => p.platform === platform);
+                      if (platformPresets.length === 0) return null;
+                      return (
+                        <div key={platform}>
+                          <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground uppercase">
+                            {platform}
+                          </div>
+                          {platformPresets.map(preset => (
+                            <SelectItem 
+                              key={preset.id} 
+                              value={preset.id}
+                              data-testid={`select-preset-${preset.id}`}
+                            >
+                              {preset.name}
+                            </SelectItem>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Select a platform preset to auto-fill scoring settings, then customize as needed
+              </p>
+            </div>
 
-        <Tabs value={selectedType} onValueChange={(value) => setSelectedType(value as any)}>
-          <TabsList className="grid w-full grid-cols-3 mb-8">
-            <TabsTrigger value="roto" data-testid="tab-roto">Rotisserie</TabsTrigger>
-            <TabsTrigger value="h2h-categories" data-testid="tab-h2h-cat">H2H Categories</TabsTrigger>
-            <TabsTrigger value="h2h-points" data-testid="tab-h2h-points">H2H Points</TabsTrigger>
-          </TabsList>
+            <Tabs value={selectedType} onValueChange={(value) => setSelectedType(value as any)}>
+              <TabsList className="grid w-full grid-cols-3 mb-8">
+                <TabsTrigger value="roto" data-testid="tab-roto">Rotisserie</TabsTrigger>
+                <TabsTrigger value="h2h-categories" data-testid="tab-h2h-cat">H2H Categories</TabsTrigger>
+                <TabsTrigger value="h2h-points" data-testid="tab-h2h-points">H2H Points</TabsTrigger>
+              </TabsList>
 
-          <TabsContent value="roto" className="space-y-6">
-            <p className="text-sm text-muted-foreground">
-              Accumulate stats all season. Rankings determined by total performance in each category.
-            </p>
-            <CategorySelector
-              hittingCategories={hittingCategories}
-              pitchingCategories={pitchingCategories}
-              onCategoryToggle={handleCategoryToggle}
-            />
-          </TabsContent>
+              <TabsContent value="roto" className="space-y-6">
+                <p className="text-sm text-muted-foreground">
+                  Accumulate stats all season. Rankings determined by total performance in each category.
+                </p>
+                <CategorySelector
+                  hittingCategories={hittingCategories}
+                  pitchingCategories={pitchingCategories}
+                  onCategoryToggle={handleCategoryToggle}
+                />
+              </TabsContent>
 
-          <TabsContent value="h2h-categories" className="space-y-6">
-            <p className="text-sm text-muted-foreground">
-              Each week you'll face an opponent. Win each category to earn points toward playoff seeding.
-            </p>
-            <CategorySelector
-              hittingCategories={hittingCategories}
-              pitchingCategories={pitchingCategories}
-              onCategoryToggle={handleCategoryToggle}
-            />
-          </TabsContent>
+              <TabsContent value="h2h-categories" className="space-y-6">
+                <p className="text-sm text-muted-foreground">
+                  Each week you'll face an opponent. Win each category to earn points toward playoff seeding.
+                </p>
+                <CategorySelector
+                  hittingCategories={hittingCategories}
+                  pitchingCategories={pitchingCategories}
+                  onCategoryToggle={handleCategoryToggle}
+                />
+              </TabsContent>
 
-          <TabsContent value="h2h-points" className="space-y-6">
-            <p className="text-sm text-muted-foreground">
-              Players earn points based on their statistical performance. Most points wins each week.
-            </p>
-            <PointsConfigurator
-              hittingPoints={hittingPoints}
-              pitchingPoints={pitchingPoints}
-              onPointsChange={handlePointsChange}
-            />
-          </TabsContent>
-        </Tabs>
+              <TabsContent value="h2h-points" className="space-y-6">
+                <p className="text-sm text-muted-foreground">
+                  Players earn points based on their statistical performance. Most points wins each week.
+                </p>
+                <PointsConfigurator
+                  hittingPoints={hittingPoints}
+                  pitchingPoints={pitchingPoints}
+                  onPointsChange={handlePointsChange}
+                />
+              </TabsContent>
+            </Tabs>
 
-        <div className="flex justify-end mt-8">
-          <Button
-            onClick={handleSave}
-            size="lg"
-            className="bg-baseball-navy hover-elevate active-elevate-2"
-            data-testid="button-save-scoring"
-          >
-            {isComplete ? 'Update Format' : 'Save & Continue'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+            <div className="flex justify-end mt-8">
+              <Button
+                onClick={handleSave}
+                size="lg"
+                className="bg-baseball-navy hover-elevate active-elevate-2"
+                data-testid="button-save-scoring"
+              >
+                {isComplete ? 'Update Format' : 'Save & Continue'}
+              </Button>
+            </div>
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
 

@@ -9,7 +9,7 @@ import { PositionalNeedsTracker } from '@/components/positional-needs-tracker';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { calculateInflation } from '@/lib/calculations';
-import type { PlayerValue, DraftPick, DraftState } from '@shared/schema';
+import type { PlayerValue, DraftPick } from '@shared/schema';
 
 export default function DraftRoom() {
   const [, navigate] = useLocation();
@@ -44,7 +44,7 @@ export default function DraftRoom() {
 
   const picksHash = useMemo(() => {
     if (!draftState?.picks?.length) return '';
-    return draftState.picks.map(p => `${p.playerId}:${p.actualPrice}`).join(',');
+    return draftState.picks.map(p => `${p.playerId}:${p.actualPrice}:${p.isMyBid}`).join(',');
   }, [draftState?.picks]);
 
   const playerValuesHash = useMemo(() => {
@@ -117,7 +117,7 @@ export default function DraftRoom() {
     setIsDialogOpen(true);
   };
 
-  const handleDraftConfirm = useCallback((playerId: string, actualPrice: number, draftedBy?: string) => {
+  const handleDraftConfirm = useCallback((playerId: string, actualPrice: number, isMyBid: boolean) => {
     const player = playerValues.find(p => p.id === playerId);
     if (!player) return;
 
@@ -128,7 +128,7 @@ export default function DraftRoom() {
       positions: player.positions,
       projectedValue: player.originalValue,
       actualPrice,
-      draftedBy,
+      isMyBid,
       pickNumber: 0,
       timestamp: Date.now(),
     };
@@ -145,12 +145,40 @@ export default function DraftRoom() {
     setSelectedPlayer(null);
   }, [playerValues, setDraftState]);
 
+  const handleUpdatePick = useCallback((pickId: string, newPrice: number, isMyBid: boolean) => {
+    setDraftState(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        picks: prev.picks.map(pick => 
+          pick.id === pickId 
+            ? { ...pick, actualPrice: newPrice, isMyBid }
+            : pick
+        ),
+      };
+    });
+  }, [setDraftState]);
+
   const handleUndoLastPick = useCallback(() => {
     setDraftState(prev => {
       if (!prev || prev.picks.length === 0) return prev;
       return {
         ...prev,
         picks: prev.picks.slice(0, -1),
+      };
+    });
+  }, [setDraftState]);
+
+  const handleDeletePick = useCallback((pickId: string) => {
+    setDraftState(prev => {
+      if (!prev) return prev;
+      const filteredPicks = prev.picks.filter(p => p.id !== pickId);
+      return {
+        ...prev,
+        picks: filteredPicks.map((pick, idx) => ({
+          ...pick,
+          pickNumber: idx + 1,
+        })),
       };
     });
   }, [setDraftState]);
@@ -168,7 +196,7 @@ export default function DraftRoom() {
       />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
           <Button
             variant="outline"
             onClick={() => navigate('/')}
@@ -211,6 +239,8 @@ export default function DraftRoom() {
             <DraftLog 
               picks={draftState.picks}
               onUndo={handleUndoLastPick}
+              onUpdatePick={handleUpdatePick}
+              onDeletePick={handleDeletePick}
             />
           </div>
         </div>

@@ -8,7 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
-import { Upload, FileText, Check, X, Loader2 } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Upload, FileText, Check, X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { fetchMultiplePlayerPositions } from '@/lib/mlb-api';
 import type { PlayerProjection } from '@shared/schema';
@@ -16,9 +17,11 @@ import type { PlayerProjection } from '@shared/schema';
 interface ProjectionUploaderProps {
   onComplete: () => void;
   isComplete: boolean;
+  isCollapsed?: boolean;
+  onToggle?: () => void;
 }
 
-export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploaderProps) {
+export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false, onToggle }: ProjectionUploaderProps) {
   const { playerProjections, setPlayerProjections } = useAppContext();
   const { toast } = useToast();
   
@@ -245,279 +248,306 @@ export function ProjectionUploader({ onComplete, isComplete }: ProjectionUploade
 
   const hasPositionOrMlbamId = columnMapping.positions || columnMapping.mlbamId;
 
+  const getSummary = () => {
+    if (playerProjections.length === 0) return null;
+    return `${playerProjections.length} players loaded`;
+  };
+
   return (
-    <Card className="border-card-border shadow-md">
-      <CardHeader className="bg-baseball-leather text-baseball-cream pb-6">
-        <CardTitle className="font-display text-3xl tracking-tight flex items-center gap-3">
-          {isComplete && <Check className="h-7 w-7 text-baseball-green" />}
-          PLAYER PROJECTIONS
-        </CardTitle>
-        <CardDescription className="text-baseball-cream/80 text-base">
-          Upload your CSV projection files (Steamer, ZiPS, THE BAT, etc.)
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="pt-8 pb-8 space-y-6">
-        {!parsedData ? (
-          <div
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-              isDragging ? 'border-baseball-navy bg-baseball-cream' : 'border-border hover:border-baseball-navy'
-            }`}
-          >
-            <Upload className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-            <h3 className="font-display text-xl text-foreground mb-2">
-              {isProcessing ? 'PROCESSING...' : 'DRAG & DROP CSV FILE'}
-            </h3>
-            <p className="text-sm text-muted-foreground mb-4">
-              {isProcessing ? 'Parsing your projections data' : 'or click to browse'}
-            </p>
-            {!isProcessing && (
-              <>
-                <Input
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
-                  className="hidden"
-                  id="csv-upload"
-                  data-testid="input-csv-upload"
-                />
-                <Label htmlFor="csv-upload">
-                  <Button variant="outline" className="hover-elevate" asChild>
-                    <span>Select CSV File</span>
-                  </Button>
-                </Label>
-              </>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-muted rounded-md border border-border">
+    <Collapsible open={!isCollapsed} onOpenChange={() => onToggle?.()}>
+      <Card className="border-card-border shadow-md">
+        <CollapsibleTrigger asChild>
+          <CardHeader className="bg-baseball-leather text-baseball-cream pb-6 cursor-pointer hover-elevate">
+            <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
-                <FileText className="h-5 w-5 text-baseball-navy" />
+                {isComplete && <Check className="h-7 w-7 text-baseball-green" />}
                 <div>
-                  <p className="font-medium text-sm">{csvFile?.name}</p>
-                  <p className="text-xs text-muted-foreground">{parsedData.length} players detected</p>
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => {
-                  setCsvFile(null);
-                  setParsedData(null);
-                  setHeaders([]);
-                  setColumnMapping({});
-                }}
-                data-testid="button-remove-csv"
-                className="hover-elevate"
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              <h4 className="font-display text-lg text-baseball-navy tracking-tight">MAP COLUMNS</h4>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">Player Name *</Label>
-                  <Select
-                    value={columnMapping.name}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, name: value }))}
-                  >
-                    <SelectTrigger data-testid="select-name-column">
-                      <SelectValue placeholder="Select column" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {headers.map((header, index) => (
-                        <SelectItem key={index} value={index.toString()}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">
-                    Position(s) {!columnMapping.mlbamId && '*'}
-                  </Label>
-                  <Select
-                    value={columnMapping.positions || '__none__'}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, positions: value === '__none__' ? undefined : value }))}
-                  >
-                    <SelectTrigger data-testid="select-positions-column">
-                      <SelectValue placeholder={columnMapping.mlbamId ? "Optional (using MLBAM ID)" : "Select column"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">-- No Position Column --</SelectItem>
-                      {headers.map((header, index) => (
-                        <SelectItem key={index} value={index.toString()}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {columnMapping.mlbamId && !columnMapping.positions && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      Positions will be fetched from MLB Stats API
-                    </p>
+                  <CardTitle className="font-display text-3xl tracking-tight">
+                    PLAYER PROJECTIONS
+                  </CardTitle>
+                  {isCollapsed && isComplete && (
+                    <p className="text-baseball-cream/80 text-sm mt-1 font-mono">{getSummary()}</p>
                   )}
-                </div>
-
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">Team</Label>
-                  <Select
-                    value={columnMapping.team || '__none__'}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, team: value === '__none__' ? undefined : value }))}
-                  >
-                    <SelectTrigger data-testid="select-team-column">
-                      <SelectValue placeholder="Select column (optional)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">-- No Team Column --</SelectItem>
-                      {headers.map((header, index) => (
-                        <SelectItem key={index} value={index.toString()}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="text-sm font-medium mb-2 block">
-                    MLBAM ID {!columnMapping.positions && '*'}
-                  </Label>
-                  <Select
-                    value={columnMapping.mlbamId || '__none__'}
-                    onValueChange={(value) => setColumnMapping(prev => ({ ...prev, mlbamId: value === '__none__' ? undefined : value }))}
-                  >
-                    <SelectTrigger data-testid="select-mlbamid-column">
-                      <SelectValue placeholder={columnMapping.positions ? "Optional" : "Required for position lookup"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="__none__">-- No MLBAM ID Column --</SelectItem>
-                      {headers.map((header, index) => (
-                        <SelectItem key={index} value={index.toString()}>
-                          {header}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {!columnMapping.positions && columnMapping.mlbamId && (
-                    <p className="text-xs text-baseball-navy mt-1">
-                      Will lookup positions via MLB Stats API
-                    </p>
+                  {!isCollapsed && (
+                    <CardDescription className="text-baseball-cream/80 text-base mt-1">
+                      Upload your CSV projection files (Steamer, ZiPS, THE BAT, etc.)
+                    </CardDescription>
                   )}
                 </div>
               </div>
-
-              {!hasPositionOrMlbamId && (
-                <div className="p-4 bg-warning/10 border border-warning/30 rounded-md">
-                  <p className="text-sm text-warning-foreground">
-                    Please map either <strong>Position</strong> or <strong>MLBAM ID</strong> column to determine player positions.
-                    If your CSV doesn't have positions, map the MLBAM ID column and positions will be fetched from MLB.
-                  </p>
-                </div>
+              {isCollapsed ? (
+                <ChevronRight className="h-6 w-6 text-baseball-cream/80" />
+              ) : (
+                <ChevronDown className="h-6 w-6 text-baseball-cream/80" />
               )}
-
-              <div className="border-t border-border pt-4">
-                <Label className="text-sm font-medium mb-3 block">Stat Columns (map as many as needed)</Label>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {headers.filter((_, idx) => 
-                    idx.toString() !== columnMapping.name &&
-                    idx.toString() !== columnMapping.positions &&
-                    idx.toString() !== columnMapping.team &&
-                    idx.toString() !== columnMapping.mlbamId
-                  ).map((header) => {
-                    const actualIndex = headers.findIndex(h => h === header);
-                    const isMapped = Object.values(columnMapping).includes(actualIndex.toString());
-                    
-                    return (
-                      <Button
-                        key={header}
-                        variant={isMapped ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handleAddStatColumn(header, actualIndex.toString())}
-                        className="justify-start hover-elevate"
-                        data-testid={`button-stat-${header.toLowerCase()}`}
-                      >
-                        {isMapped && <Check className="h-3 w-3 mr-2" />}
-                        {header}
-                      </Button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
-
-            {isFetchingPositions && (
-              <div className="p-4 bg-baseball-cream rounded-md border border-border space-y-2">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
-                  <span className="text-sm font-medium">Fetching positions from MLB Stats API...</span>
-                </div>
-                <Progress value={fetchProgress} className="h-2" />
-                <p className="text-xs text-muted-foreground">{Math.round(fetchProgress)}% complete</p>
-              </div>
-            )}
-
-            {parsedData.length > 0 && (
-              <div className="border border-border rounded-lg overflow-hidden">
-                <div className="bg-baseball-leather text-baseball-cream px-4 py-2">
-                  <p className="text-sm font-medium">Preview (first 5 rows)</p>
-                </div>
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        {headers.map((header, index) => (
-                          <TableHead key={index} className="font-semibold whitespace-nowrap">
-                            {header}
-                          </TableHead>
-                        ))}
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {parsedData.slice(0, 5).map((row, rowIndex) => (
-                        <TableRow key={rowIndex}>
-                          {row.map((cell, cellIndex) => (
-                            <TableCell key={cellIndex} className="font-mono text-sm">
-                              {cell}
-                            </TableCell>
-                          ))}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              </div>
-            )}
-
-            <div className="flex justify-end">
-              <Button
-                onClick={handleImport}
-                size="lg"
-                disabled={!columnMapping.name || !hasPositionOrMlbamId || isFetchingPositions}
-                className="bg-baseball-navy hover-elevate active-elevate-2"
-                data-testid="button-import-projections"
+          </CardHeader>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <CardContent className="pt-8 pb-8 space-y-6">
+            {!parsedData ? (
+              <div
+                onDrop={handleDrop}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
+                  isDragging ? 'border-baseball-navy bg-baseball-cream' : 'border-border hover:border-baseball-navy'
+                }`}
               >
-                {isFetchingPositions ? (
+                <Upload className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+                <h3 className="font-display text-xl text-foreground mb-2">
+                  {isProcessing ? 'PROCESSING...' : 'DRAG & DROP CSV FILE'}
+                </h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {isProcessing ? 'Parsing your projections data' : 'or click to browse'}
+                </p>
+                {!isProcessing && (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Fetching Positions...
+                    <Input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
+                      className="hidden"
+                      id="csv-upload"
+                      data-testid="input-csv-upload"
+                    />
+                    <Label htmlFor="csv-upload">
+                      <Button variant="outline" className="hover-elevate" asChild>
+                        <span>Select CSV File</span>
+                      </Button>
+                    </Label>
                   </>
-                ) : (
-                  'Import Projections'
                 )}
-              </Button>
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between p-4 bg-muted rounded-md border border-border">
+                  <div className="flex items-center gap-3">
+                    <FileText className="h-5 w-5 text-baseball-navy" />
+                    <div>
+                      <p className="font-medium text-sm">{csvFile?.name}</p>
+                      <p className="text-xs text-muted-foreground">{parsedData.length} players detected</p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setCsvFile(null);
+                      setParsedData(null);
+                      setHeaders([]);
+                      setColumnMapping({});
+                    }}
+                    data-testid="button-remove-csv"
+                    className="hover-elevate"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="space-y-4">
+                  <h4 className="font-display text-lg text-baseball-navy tracking-tight">MAP COLUMNS</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Player Name *</Label>
+                      <Select
+                        value={columnMapping.name}
+                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, name: value }))}
+                      >
+                        <SelectTrigger data-testid="select-name-column">
+                          <SelectValue placeholder="Select column" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {headers.map((header, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">
+                        Position(s) {!columnMapping.mlbamId && '*'}
+                      </Label>
+                      <Select
+                        value={columnMapping.positions || '__none__'}
+                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, positions: value === '__none__' ? undefined : value }))}
+                      >
+                        <SelectTrigger data-testid="select-positions-column">
+                          <SelectValue placeholder={columnMapping.mlbamId ? "Optional (using MLBAM ID)" : "Select column"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- No Position Column --</SelectItem>
+                          {headers.map((header, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {columnMapping.mlbamId && !columnMapping.positions && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Positions will be fetched from MLB Stats API
+                        </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">Team</Label>
+                      <Select
+                        value={columnMapping.team || '__none__'}
+                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, team: value === '__none__' ? undefined : value }))}
+                      >
+                        <SelectTrigger data-testid="select-team-column">
+                          <SelectValue placeholder="Select column (optional)" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- No Team Column --</SelectItem>
+                          {headers.map((header, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium mb-2 block">
+                        MLBAM ID {!columnMapping.positions && '*'}
+                      </Label>
+                      <Select
+                        value={columnMapping.mlbamId || '__none__'}
+                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, mlbamId: value === '__none__' ? undefined : value }))}
+                      >
+                        <SelectTrigger data-testid="select-mlbamid-column">
+                          <SelectValue placeholder={columnMapping.positions ? "Optional" : "Required for position lookup"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__none__">-- No MLBAM ID Column --</SelectItem>
+                          {headers.map((header, index) => (
+                            <SelectItem key={index} value={index.toString()}>
+                              {header}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!columnMapping.positions && columnMapping.mlbamId && (
+                        <p className="text-xs text-baseball-navy mt-1">
+                          Will lookup positions via MLB Stats API
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {!hasPositionOrMlbamId && (
+                    <div className="p-4 bg-warning/10 border border-warning/30 rounded-md">
+                      <p className="text-sm text-warning-foreground">
+                        Please map either <strong>Position</strong> or <strong>MLBAM ID</strong> column to determine player positions.
+                        If your CSV doesn't have positions, map the MLBAM ID column and positions will be fetched from MLB.
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="border-t border-border pt-4">
+                    <Label className="text-sm font-medium mb-3 block">Stat Columns (map as many as needed)</Label>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {headers.filter((_, idx) => 
+                        idx.toString() !== columnMapping.name &&
+                        idx.toString() !== columnMapping.positions &&
+                        idx.toString() !== columnMapping.team &&
+                        idx.toString() !== columnMapping.mlbamId
+                      ).map((header) => {
+                        const actualIndex = headers.findIndex(h => h === header);
+                        const isMapped = Object.values(columnMapping).includes(actualIndex.toString());
+                        
+                        return (
+                          <Button
+                            key={header}
+                            variant={isMapped ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => handleAddStatColumn(header, actualIndex.toString())}
+                            className="justify-start hover-elevate"
+                            data-testid={`button-stat-${header.toLowerCase()}`}
+                          >
+                            {isMapped && <Check className="h-3 w-3 mr-2" />}
+                            {header}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {isFetchingPositions && (
+                  <div className="p-4 bg-baseball-cream rounded-md border border-border space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
+                      <span className="text-sm font-medium">Fetching positions from MLB Stats API...</span>
+                    </div>
+                    <Progress value={fetchProgress} className="h-2" />
+                    <p className="text-xs text-muted-foreground">{Math.round(fetchProgress)}% complete</p>
+                  </div>
+                )}
+
+                {parsedData.length > 0 && (
+                  <div className="border border-border rounded-lg overflow-hidden">
+                    <div className="bg-baseball-leather text-baseball-cream px-4 py-2">
+                      <p className="text-sm font-medium">Preview (first 5 rows)</p>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            {headers.map((header, index) => (
+                              <TableHead key={index} className="font-semibold whitespace-nowrap">
+                                {header}
+                              </TableHead>
+                            ))}
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {parsedData.slice(0, 5).map((row, rowIndex) => (
+                            <TableRow key={rowIndex}>
+                              {row.map((cell, cellIndex) => (
+                                <TableCell key={cellIndex} className="font-mono text-sm">
+                                  {cell}
+                                </TableCell>
+                              ))}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex justify-end">
+                  <Button
+                    onClick={handleImport}
+                    size="lg"
+                    disabled={!columnMapping.name || !hasPositionOrMlbamId || isFetchingPositions}
+                    className="bg-baseball-navy hover-elevate active-elevate-2"
+                    data-testid="button-import-projections"
+                  >
+                    {isFetchingPositions ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Fetching Positions...
+                      </>
+                    ) : (
+                      'Import Projections'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </CollapsibleContent>
+      </Card>
+    </Collapsible>
   );
 }
