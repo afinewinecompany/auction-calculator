@@ -105,6 +105,21 @@ export const csvColumnMappingSchema = z.object({
 
 export type CsvColumnMapping = z.infer<typeof csvColumnMappingSchema>;
 
+// Projection File (for multi-file uploads)
+export const projectionFileKindSchema = z.enum(["hitters", "pitchers", "mixed"]);
+export type ProjectionFileKind = z.infer<typeof projectionFileKindSchema>;
+
+export const projectionFileSchema = z.object({
+  id: z.string(),
+  kind: projectionFileKindSchema,
+  fileName: z.string(),
+  mapping: csvColumnMappingSchema.optional(),
+  playerCount: z.number(),
+  importedAt: z.number(),
+});
+
+export type ProjectionFile = z.infer<typeof projectionFileSchema>;
+
 // Draft Pick
 export const draftPickSchema = z.object({
   id: z.string(),
@@ -142,6 +157,7 @@ export const appStateSchema = z.object({
   playerValues: z.array(playerValueSchema).optional(),
   draftState: draftStateSchema.optional(),
   targetedPlayerIds: z.array(z.string()).optional(),
+  projectionFiles: z.array(projectionFileSchema).optional(),
 });
 
 export type AppState = z.infer<typeof appStateSchema>;

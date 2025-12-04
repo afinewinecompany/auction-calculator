@@ -9,10 +9,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Upload, FileText, Check, X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Upload, FileText, Check, X, Loader2, ChevronDown, ChevronRight, Users, Activity } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { lookupPlayerPositions } from '@/lib/position-lookup';
-import type { PlayerProjection } from '@shared/schema';
+import { mergeProjections, identifyPlayerType } from '@/lib/projection-merger';
+import type { PlayerProjection, ProjectionFile, ProjectionFileKind } from '@shared/schema';
 
 interface ProjectionUploaderProps {
   onComplete: () => void;
@@ -21,36 +24,63 @@ interface ProjectionUploaderProps {
   onToggle?: () => void;
 }
 
+interface FileUploadState {
+  file: File | null;
+  parsedData: string[][] | null;
+  headers: string[];
+  columnMapping: Record<string, string>;
+  projections: PlayerProjection[];
+  isProcessing: boolean;
+  isFetchingPositions: boolean;
+  fetchProgress: number;
+}
+
+const createEmptyFileState = (): FileUploadState => ({
+  file: null,
+  parsedData: null,
+  headers: [],
+  columnMapping: {},
+  projections: [],
+  isProcessing: false,
+  isFetchingPositions: false,
+  fetchProgress: 0,
+});
+
+const COMMON_HITTING_STATS = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'OPS', 'H', 'BB', 'SO', 'TB', '2B', '3B', 'CS'];
+const COMMON_PITCHING_STATS = ['W', 'L', 'SV', 'K', 'ERA', 'WHIP', 'QS', 'HLD', 'IP', 'SO', 'BB', 'H', 'ER', 'HR', 'K/9', 'BB/9'];
+
 export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false, onToggle }: ProjectionUploaderProps) {
-  const { playerProjections, setPlayerProjections, scoringFormat } = useAppContext();
+  const { 
+    playerProjections, 
+    setPlayerProjections, 
+    scoringFormat,
+    projectionFiles,
+    addProjectionFile,
+  } = useAppContext();
   const { toast } = useToast();
   
-  const getRelevantStats = useCallback(() => {
-    if (!scoringFormat) return [];
+  const [hittersState, setHittersState] = useState<FileUploadState>(createEmptyFileState());
+  const [pitchersState, setPitchersState] = useState<FileUploadState>(createEmptyFileState());
+  const [activeTab, setActiveTab] = useState<'hitters' | 'pitchers'>('hitters');
+  const [isDragging, setIsDragging] = useState(false);
+  
+  const getRelevantStats = useCallback((kind: 'hitters' | 'pitchers') => {
+    if (!scoringFormat) {
+      return kind === 'hitters' ? COMMON_HITTING_STATS : COMMON_PITCHING_STATS;
+    }
     
     if (scoringFormat.type === 'h2h-points') {
-      return [
-        ...Object.keys(scoringFormat.hittingPoints || {}),
-        ...Object.keys(scoringFormat.pitchingPoints || {}),
-      ];
+      return kind === 'hitters' 
+        ? Object.keys(scoringFormat.hittingPoints || {})
+        : Object.keys(scoringFormat.pitchingPoints || {});
     } else {
-      return [
-        ...(scoringFormat.hittingCategories || []),
-        ...(scoringFormat.pitchingCategories || []),
-      ];
+      return kind === 'hitters'
+        ? scoringFormat.hittingCategories || []
+        : scoringFormat.pitchingCategories || [];
     }
   }, [scoringFormat]);
-  
-  const [csvFile, setCsvFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<string[][] | null>(null);
-  const [headers, setHeaders] = useState<string[]>([]);
-  const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
-  const [isDragging, setIsDragging] = useState(false);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isFetchingPositions, setIsFetchingPositions] = useState(false);
-  const [fetchProgress, setFetchProgress] = useState(0);
 
-  const handleFileSelect = (file: File | null) => {
+  const handleFileSelect = useCallback((file: File | null, kind: 'hitters' | 'pitchers') => {
     if (!file) return;
     
     if (!file.name.toLowerCase().endsWith('.csv')) {
@@ -62,33 +92,22 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
     
-    setCsvFile(file);
-    setIsProcessing(true);
+    const setState = kind === 'hitters' ? setHittersState : setPitchersState;
+    setState(prev => ({ ...prev, file, isProcessing: true }));
     
     Papa.parse(file, {
       complete: (results) => {
-        setIsProcessing(false);
-        
-        if (results.errors.length > 0) {
-          console.error('CSV parsing errors:', results.errors);
-          toast({
-            title: 'CSV parsing warning',
-            description: 'Some rows may have formatting issues',
-            variant: 'default',
-          });
-        }
-        
         const data = results.data as string[][];
         const filteredData = data.filter(row => row.some(cell => cell && cell.trim()));
         
         if (filteredData.length > 0) {
-          setHeaders(filteredData[0]);
-          setParsedData(filteredData.slice(1));
+          const headers = filteredData[0];
+          const parsedData = filteredData.slice(1);
           
           const autoMapping: Record<string, string> = {};
-          const relevantStats = getRelevantStats();
+          const relevantStats = getRelevantStats(kind);
           
-          filteredData[0].forEach((header, index) => {
+          headers.forEach((header, index) => {
             const lower = header.toLowerCase().trim();
             const headerUpper = header.toUpperCase().trim();
             
@@ -99,29 +118,35 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
               autoMapping.mlbamId = index.toString();
             }
             
-            if (relevantStats.length > 0) {
-              relevantStats.forEach(stat => {
-                const statLower = stat.toLowerCase();
-                const statUpper = stat.toUpperCase();
-                if (lower === statLower || headerUpper === statUpper || header === stat) {
-                  autoMapping[header] = index.toString();
-                }
-              });
-            }
+            relevantStats.forEach(stat => {
+              const statLower = stat.toLowerCase();
+              const statUpper = stat.toUpperCase();
+              if (lower === statLower || headerUpper === statUpper || header === stat) {
+                autoMapping[header] = index.toString();
+              }
+            });
           });
-          setColumnMapping(autoMapping);
+          
+          setState(prev => ({
+            ...prev,
+            headers,
+            parsedData,
+            columnMapping: autoMapping,
+            isProcessing: false,
+          }));
           
           const autoMappedStats = Object.keys(autoMapping).filter(
             k => !['name', 'team', 'positions', 'mlbamId'].includes(k)
           );
           
           toast({
-            title: 'CSV loaded successfully',
+            title: `${kind === 'hitters' ? 'Hitters' : 'Pitchers'} CSV loaded`,
             description: autoMappedStats.length > 0 
-              ? `Found ${filteredData.length - 1} players, auto-mapped ${autoMappedStats.length} stat columns from scoring format`
-              : `Found ${filteredData.length - 1} players`,
+              ? `Found ${parsedData.length} players, auto-mapped ${autoMappedStats.length} stat columns`
+              : `Found ${parsedData.length} players`,
           });
         } else {
+          setState(prev => ({ ...prev, isProcessing: false }));
           toast({
             title: 'Empty file',
             description: 'The CSV file appears to be empty',
@@ -130,8 +155,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
         }
       },
       error: (error) => {
-        setIsProcessing(false);
-        console.error('CSV parsing error:', error);
+        setState(prev => ({ ...prev, isProcessing: false }));
         toast({
           title: 'Failed to parse CSV',
           description: error.message || 'Please check the file format',
@@ -140,29 +164,23 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       },
       skipEmptyLines: true,
     });
-  };
+  }, [getRelevantStats, toast]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback((e: React.DragEvent, kind: 'hitters' | 'pitchers') => {
     e.preventDefault();
     setIsDragging(false);
     
     const file = e.dataTransfer.files[0];
     if (file && file.name.endsWith('.csv')) {
-      handleFileSelect(file);
+      handleFileSelect(file, kind);
     }
-  }, []);
+  }, [handleFileSelect]);
 
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  }, []);
-
-  const handleDragLeave = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  const handleImport = async () => {
-    if (!parsedData || !columnMapping.name) {
+  const handleImport = async (kind: 'hitters' | 'pitchers') => {
+    const state = kind === 'hitters' ? hittersState : pitchersState;
+    const setState = kind === 'hitters' ? setHittersState : setPitchersState;
+    
+    if (!state.parsedData || !state.columnMapping.name) {
       toast({
         title: 'Missing required column',
         description: 'Please map the Player Name column',
@@ -171,26 +189,26 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
 
-    const hasPositions = !!columnMapping.positions;
-    const hasMlbamId = !!columnMapping.mlbamId;
+    const hasPositions = !!state.columnMapping.positions;
+    const hasMlbamId = !!state.columnMapping.mlbamId;
 
     if (!hasPositions && !hasMlbamId) {
       toast({
         title: 'Missing position data',
-        description: 'Please map either Position column or MLBAM ID column to determine player positions',
+        description: 'Please map either Position column or MLBAM ID column',
         variant: 'destructive',
       });
       return;
     }
 
-    const statColumns = Object.keys(columnMapping).filter(
+    const statColumns = Object.keys(state.columnMapping).filter(
       key => !['name', 'team', 'positions', 'mlbamId'].includes(key)
     );
     
     if (statColumns.length === 0) {
       toast({
         title: 'No stat columns mapped',
-        description: 'Click on stat column buttons below to add them (e.g., HR, R, RBI, ERA, W, etc.)',
+        description: 'Click on stat column buttons to add them',
         variant: 'destructive',
       });
       return;
@@ -199,42 +217,31 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     let positionsByMlbamId: Map<string, string[]> | null = null;
 
     if (!hasPositions && hasMlbamId) {
-      setIsFetchingPositions(true);
-      setFetchProgress(0);
+      setState(prev => ({ ...prev, isFetchingPositions: true, fetchProgress: 0 }));
       
-      toast({
-        title: 'Looking up positions',
-        description: 'Matching player positions from reference data...',
-      });
-
-      const mlbamIds = parsedData
-        .map(row => row[parseInt(columnMapping.mlbamId)]?.trim())
+      const mlbamIds = state.parsedData
+        .map(row => row[parseInt(state.columnMapping.mlbamId)]?.trim())
         .filter(id => id && id.length > 0);
 
       try {
         positionsByMlbamId = await lookupPlayerPositions(
           mlbamIds,
-          (completed, total) => setFetchProgress((completed / total) * 100)
+          (completed, total) => setState(prev => ({ ...prev, fetchProgress: (completed / total) * 100 }))
         );
       } catch (error) {
         console.error('Failed to lookup positions:', error);
-        toast({
-          title: 'Position lookup failed',
-          description: 'Could not match positions. Players will be assigned UTIL.',
-          variant: 'default',
-        });
         positionsByMlbamId = new Map();
       }
       
-      setIsFetchingPositions(false);
+      setState(prev => ({ ...prev, isFetchingPositions: false }));
     }
 
-    const projections: PlayerProjection[] = parsedData
+    const projections: PlayerProjection[] = state.parsedData
       .filter(row => row && row.length > 0)
       .map(row => {
         const stats: Record<string, number> = {};
         
-        Object.entries(columnMapping).forEach(([key, colIndex]) => {
+        Object.entries(state.columnMapping).forEach(([key, colIndex]) => {
           if (!['name', 'team', 'positions', 'mlbamId'].includes(key)) {
             const cellValue = row[parseInt(colIndex)]?.trim() || '';
             const value = parseFloat(cellValue);
@@ -244,26 +251,26 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           }
         });
 
-        let positions: string[] = ['UTIL'];
+        let positions: string[] = kind === 'hitters' ? ['UTIL'] : ['P'];
         
         if (hasPositions) {
-          const positionsStr = row[parseInt(columnMapping.positions)]?.trim() || '';
+          const positionsStr = row[parseInt(state.columnMapping.positions)]?.trim() || '';
           const parsedPositions = positionsStr.split(/[,/]/).map(p => p.trim()).filter(Boolean);
           if (parsedPositions.length > 0) {
             positions = parsedPositions;
           }
         } else if (hasMlbamId && positionsByMlbamId) {
-          const mlbamId = row[parseInt(columnMapping.mlbamId)]?.trim();
+          const mlbamId = row[parseInt(state.columnMapping.mlbamId)]?.trim();
           if (mlbamId && positionsByMlbamId.has(mlbamId)) {
-            positions = positionsByMlbamId.get(mlbamId) || ['UTIL'];
+            positions = positionsByMlbamId.get(mlbamId) || positions;
           }
         }
 
-        const mlbamId = hasMlbamId ? row[parseInt(columnMapping.mlbamId)]?.trim() : undefined;
+        const mlbamId = hasMlbamId ? row[parseInt(state.columnMapping.mlbamId)]?.trim() : undefined;
 
         return {
-          name: row[parseInt(columnMapping.name)]?.trim() || 'Unknown Player',
-          team: columnMapping.team ? row[parseInt(columnMapping.team)]?.trim() : undefined,
+          name: row[parseInt(state.columnMapping.name)]?.trim() || 'Unknown Player',
+          team: state.columnMapping.team ? row[parseInt(state.columnMapping.team)]?.trim() : undefined,
           positions,
           stats,
           mlbamId,
@@ -280,27 +287,350 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
 
-    setPlayerProjections(projections);
-    toast({
-      title: 'Projections imported',
-      description: `Successfully imported ${projections.length} players`,
-    });
-    onComplete();
+    setState(prev => ({ ...prev, projections }));
+    
+    const fileRecord: ProjectionFile = {
+      id: `${kind}-${Date.now()}`,
+      kind: kind as ProjectionFileKind,
+      fileName: state.file?.name || 'unknown.csv',
+      playerCount: projections.length,
+      importedAt: Date.now(),
+    };
+    addProjectionFile(fileRecord);
+    
+    const existingProjections = playerProjections || [];
+    const existingHitters = existingProjections.filter(p => identifyPlayerType(p) !== 'pitcher');
+    const existingPitchers = existingProjections.filter(p => identifyPlayerType(p) !== 'hitter');
+    
+    const otherKind = kind === 'hitters' ? 'pitchers' : 'hitters';
+    const otherTypeProjections = kind === 'hitters' ? existingPitchers : existingHitters;
+    
+    if (otherTypeProjections.length > 0) {
+      const hitterProjs = kind === 'hitters' ? projections : existingHitters;
+      const pitcherProjs = kind === 'hitters' ? existingPitchers : projections;
+      const { mergedProjections, dualPlayersCount } = mergeProjections(hitterProjs, pitcherProjs);
+      setPlayerProjections(mergedProjections);
+      
+      toast({
+        title: 'Projections merged',
+        description: `${mergedProjections.length} total players${dualPlayersCount > 0 ? `, including ${dualPlayersCount} two-way players` : ''}`,
+      });
+      onComplete();
+    } else {
+      setPlayerProjections(projections);
+      toast({
+        title: `${kind === 'hitters' ? 'Hitters' : 'Pitchers'} imported`,
+        description: `${projections.length} players imported. Upload ${otherKind} to complete.`,
+      });
+      setActiveTab(otherKind);
+    }
   };
 
-  const handleAddStatColumn = (statName: string, columnIndex: string) => {
-    setColumnMapping(prev => ({
+  const handleClearFile = (kind: 'hitters' | 'pitchers') => {
+    const setState = kind === 'hitters' ? setHittersState : setPitchersState;
+    setState(createEmptyFileState());
+  };
+
+  const handleAddStatColumn = (kind: 'hitters' | 'pitchers', statName: string, columnIndex: string) => {
+    const setState = kind === 'hitters' ? setHittersState : setPitchersState;
+    setState(prev => ({
       ...prev,
-      [statName]: columnIndex,
+      columnMapping: { ...prev.columnMapping, [statName]: columnIndex },
     }));
   };
 
-  const hasPositionOrMlbamId = columnMapping.positions || columnMapping.mlbamId;
+  const renderUploadPanel = (kind: 'hitters' | 'pitchers') => {
+    const state = kind === 'hitters' ? hittersState : pitchersState;
+    const setState = kind === 'hitters' ? setHittersState : setPitchersState;
+    const relevantStats = getRelevantStats(kind);
+    const hasPositionOrMlbamId = state.columnMapping.positions || state.columnMapping.mlbamId;
+    const Icon = kind === 'hitters' ? Users : Activity;
+    
+    if (!state.parsedData) {
+      return (
+        <div
+          onDrop={(e) => handleDrop(e, kind)}
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+            isDragging ? 'border-baseball-navy bg-baseball-cream' : 'border-border hover:border-baseball-navy'
+          }`}
+        >
+          <Icon className="h-12 w-12 mx-auto mb-3 text-muted-foreground" />
+          <h3 className="font-display text-lg text-foreground mb-2">
+            {state.isProcessing ? 'PROCESSING...' : `UPLOAD ${kind.toUpperCase()} CSV`}
+          </h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            {state.isProcessing ? 'Parsing data...' : 'Drag & drop or click to browse'}
+          </p>
+          {!state.isProcessing && (
+            <>
+              <Input
+                type="file"
+                accept=".csv"
+                onChange={(e) => handleFileSelect(e.target.files?.[0] || null, kind)}
+                className="hidden"
+                id={`csv-upload-${kind}`}
+                data-testid={`input-csv-upload-${kind}`}
+              />
+              <Label htmlFor={`csv-upload-${kind}`}>
+                <Button variant="outline" className="hover-elevate" asChild>
+                  <span>Select {kind === 'hitters' ? 'Hitters' : 'Pitchers'} CSV</span>
+                </Button>
+              </Label>
+            </>
+          )}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between p-3 bg-muted rounded-md border border-border">
+          <div className="flex items-center gap-3">
+            <FileText className="h-5 w-5 text-baseball-navy" />
+            <div>
+              <p className="font-medium text-sm">{state.file?.name}</p>
+              <p className="text-xs text-muted-foreground">{state.parsedData.length} players</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {state.projections.length > 0 && (
+              <Badge variant="default" className="bg-baseball-green">
+                <Check className="h-3 w-3 mr-1" />
+                Imported
+              </Badge>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => handleClearFile(kind)}
+              data-testid={`button-remove-${kind}-csv`}
+              className="hover-elevate"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+
+        {state.projections.length === 0 && (
+          <>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">Player Name *</Label>
+                <Select
+                  value={state.columnMapping.name}
+                  onValueChange={(value) => setState(prev => ({ 
+                    ...prev, 
+                    columnMapping: { ...prev.columnMapping, name: value }
+                  }))}
+                >
+                  <SelectTrigger data-testid={`select-${kind}-name-column`}>
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {state.headers.map((header, index) => (
+                      <SelectItem key={index} value={index.toString()}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">
+                  Position(s) {!state.columnMapping.mlbamId && '*'}
+                </Label>
+                <Select
+                  value={state.columnMapping.positions || '__none__'}
+                  onValueChange={(value) => {
+                    setState(prev => {
+                      const newMapping = { ...prev.columnMapping };
+                      if (value === '__none__') {
+                        delete newMapping.positions;
+                      } else {
+                        newMapping.positions = value;
+                      }
+                      return { ...prev, columnMapping: newMapping };
+                    });
+                  }}
+                >
+                  <SelectTrigger data-testid={`select-${kind}-positions-column`}>
+                    <SelectValue placeholder={state.columnMapping.mlbamId ? "Optional" : "Select column"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No Position Column --</SelectItem>
+                    {state.headers.map((header, index) => (
+                      <SelectItem key={index} value={index.toString()}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">Team</Label>
+                <Select
+                  value={state.columnMapping.team || '__none__'}
+                  onValueChange={(value) => {
+                    setState(prev => {
+                      const newMapping = { ...prev.columnMapping };
+                      if (value === '__none__') {
+                        delete newMapping.team;
+                      } else {
+                        newMapping.team = value;
+                      }
+                      return { ...prev, columnMapping: newMapping };
+                    });
+                  }}
+                >
+                  <SelectTrigger data-testid={`select-${kind}-team-column`}>
+                    <SelectValue placeholder="Optional" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No Team Column --</SelectItem>
+                    {state.headers.map((header, index) => (
+                      <SelectItem key={index} value={index.toString()}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium mb-1.5 block">
+                  MLBAM ID {!state.columnMapping.positions && '*'}
+                </Label>
+                <Select
+                  value={state.columnMapping.mlbamId || '__none__'}
+                  onValueChange={(value) => {
+                    setState(prev => {
+                      const newMapping = { ...prev.columnMapping };
+                      if (value === '__none__') {
+                        delete newMapping.mlbamId;
+                      } else {
+                        newMapping.mlbamId = value;
+                      }
+                      return { ...prev, columnMapping: newMapping };
+                    });
+                  }}
+                >
+                  <SelectTrigger data-testid={`select-${kind}-mlbamid-column`}>
+                    <SelectValue placeholder={state.columnMapping.positions ? "Optional" : "For position lookup"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">-- No MLBAM ID --</SelectItem>
+                    {state.headers.map((header, index) => (
+                      <SelectItem key={index} value={index.toString()}>
+                        {header}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {!hasPositionOrMlbamId && (
+              <div className="p-3 bg-warning/10 border border-warning/30 rounded-md">
+                <p className="text-sm text-warning-foreground">
+                  Map either <strong>Position</strong> or <strong>MLBAM ID</strong> column.
+                </p>
+              </div>
+            )}
+
+            <div className="border-t border-border pt-3">
+              <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                <Label className="text-sm font-medium">
+                  {kind === 'hitters' ? 'Hitting' : 'Pitching'} Stats (click to add) *
+                </Label>
+                <span className="text-xs text-muted-foreground font-mono">
+                  {Object.keys(state.columnMapping).filter(k => !['name', 'team', 'positions', 'mlbamId'].includes(k)).length} mapped
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {state.headers.filter((_, idx) => 
+                  idx.toString() !== state.columnMapping.name &&
+                  idx.toString() !== state.columnMapping.positions &&
+                  idx.toString() !== state.columnMapping.team &&
+                  idx.toString() !== state.columnMapping.mlbamId
+                ).map((header) => {
+                  const actualIndex = state.headers.findIndex(h => h === header);
+                  const isMapped = Object.values(state.columnMapping).includes(actualIndex.toString());
+                  const isRecommended = relevantStats.some(stat => 
+                    stat.toLowerCase() === header.toLowerCase() || 
+                    stat.toUpperCase() === header.toUpperCase() ||
+                    stat === header
+                  );
+                  
+                  return (
+                    <Button
+                      key={header}
+                      variant={isMapped ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => handleAddStatColumn(kind, header, actualIndex.toString())}
+                      className={`hover-elevate ${!isMapped && isRecommended ? 'border-baseball-navy border-2' : ''}`}
+                      data-testid={`button-${kind}-stat-${header.toLowerCase()}`}
+                    >
+                      {isMapped && <Check className="h-3 w-3 mr-1" />}
+                      {header}
+                      {!isMapped && isRecommended && <span className="ml-1 text-xs text-baseball-navy">★</span>}
+                    </Button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {state.isFetchingPositions && (
+              <div className="p-3 bg-baseball-cream rounded-md border border-border space-y-2">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
+                  <span className="text-sm font-medium">Looking up positions...</span>
+                </div>
+                <Progress value={state.fetchProgress} className="h-2" />
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() => handleImport(kind)}
+                size="default"
+                disabled={!state.columnMapping.name || !hasPositionOrMlbamId || state.isFetchingPositions}
+                className="bg-baseball-navy hover-elevate active-elevate-2"
+                data-testid={`button-import-${kind}`}
+              >
+                {state.isFetchingPositions ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Fetching...
+                  </>
+                ) : (
+                  `Import ${kind === 'hitters' ? 'Hitters' : 'Pitchers'}`
+                )}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   const getSummary = () => {
     if (playerProjections.length === 0) return null;
+    const hittersFile = projectionFiles.find(f => f.kind === 'hitters');
+    const pitchersFile = projectionFiles.find(f => f.kind === 'pitchers');
+    if (hittersFile && pitchersFile) {
+      return `${playerProjections.length} players (${hittersFile.playerCount} hitters, ${pitchersFile.playerCount} pitchers)`;
+    }
     return `${playerProjections.length} players loaded`;
   };
+
+  const hittersFile = projectionFiles.find(f => f.kind === 'hitters');
+  const pitchersFile = projectionFiles.find(f => f.kind === 'pitchers');
+  const hittersComplete = !!hittersFile || hittersState.projections.length > 0;
+  const pitchersComplete = !!pitchersFile || pitchersState.projections.length > 0;
 
   return (
     <Collapsible open={!isCollapsed} onOpenChange={() => onToggle?.()}>
@@ -319,321 +649,85 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                   )}
                   {!isCollapsed && (
                     <CardDescription className="text-baseball-cream/80 text-base mt-1">
-                      Upload your CSV projection files (Steamer, ZiPS, THE BAT, etc.)
+                      Upload hitters and pitchers CSV files (separate or combined)
                     </CardDescription>
                   )}
                 </div>
               </div>
-              {isCollapsed ? (
-                <ChevronRight className="h-6 w-6 text-baseball-cream/80" />
-              ) : (
-                <ChevronDown className="h-6 w-6 text-baseball-cream/80" />
-              )}
+              <div className="flex items-center gap-2">
+                {hittersComplete && (
+                  <Badge variant="outline" className="border-baseball-green text-baseball-cream bg-baseball-green/20">
+                    <Users className="h-3 w-3 mr-1" />
+                    {hittersFile?.playerCount || hittersState.projections.length}
+                  </Badge>
+                )}
+                {pitchersComplete && (
+                  <Badge variant="outline" className="border-baseball-green text-baseball-cream bg-baseball-green/20">
+                    <Activity className="h-3 w-3 mr-1" />
+                    {pitchersFile?.playerCount || pitchersState.projections.length}
+                  </Badge>
+                )}
+                {isCollapsed ? (
+                  <ChevronRight className="h-6 w-6 text-baseball-cream/80" />
+                ) : (
+                  <ChevronDown className="h-6 w-6 text-baseball-cream/80" />
+                )}
+              </div>
             </div>
           </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <CardContent className="pt-8 pb-8 space-y-6">
-            {!parsedData ? (
-              <div
-                onDrop={handleDrop}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                className={`border-2 border-dashed rounded-lg p-12 text-center transition-colors ${
-                  isDragging ? 'border-baseball-navy bg-baseball-cream' : 'border-border hover:border-baseball-navy'
-                }`}
-              >
-                <Upload className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-                <h3 className="font-display text-xl text-foreground mb-2">
-                  {isProcessing ? 'PROCESSING...' : 'DRAG & DROP CSV FILE'}
-                </h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {isProcessing ? 'Parsing your projections data' : 'or click to browse'}
-                </p>
-                {!isProcessing && (
-                  <>
-                    <Input
-                      type="file"
-                      accept=".csv"
-                      onChange={(e) => handleFileSelect(e.target.files?.[0] || null)}
-                      className="hidden"
-                      id="csv-upload"
-                      data-testid="input-csv-upload"
-                    />
-                    <Label htmlFor="csv-upload">
-                      <Button variant="outline" className="hover-elevate" asChild>
-                        <span>Select CSV File</span>
-                      </Button>
-                    </Label>
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between p-4 bg-muted rounded-md border border-border">
-                  <div className="flex items-center gap-3">
-                    <FileText className="h-5 w-5 text-baseball-navy" />
-                    <div>
-                      <p className="font-medium text-sm">{csvFile?.name}</p>
-                      <p className="text-xs text-muted-foreground">{parsedData.length} players detected</p>
-                    </div>
+          <CardContent className="pt-6 pb-6">
+            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'hitters' | 'pitchers')}>
+              <TabsList className="grid w-full grid-cols-2 mb-4">
+                <TabsTrigger 
+                  value="hitters" 
+                  className="flex items-center gap-2"
+                  data-testid="tab-hitters"
+                >
+                  <Users className="h-4 w-4" />
+                  Hitters
+                  {hittersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="pitchers" 
+                  className="flex items-center gap-2"
+                  data-testid="tab-pitchers"
+                >
+                  <Activity className="h-4 w-4" />
+                  Pitchers
+                  {pitchersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="hitters">
+                {renderUploadPanel('hitters')}
+              </TabsContent>
+              <TabsContent value="pitchers">
+                {renderUploadPanel('pitchers')}
+              </TabsContent>
+            </Tabs>
+
+            {playerProjections.length > 0 && (
+              <div className="mt-4 p-4 bg-baseball-cream-dark rounded-md border border-card-border">
+                <div className="flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <Check className="h-5 w-5 text-baseball-green" />
+                    <span className="font-display text-lg text-baseball-navy">
+                      {playerProjections.length} PLAYERS READY
+                    </span>
                   </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setCsvFile(null);
-                      setParsedData(null);
-                      setHeaders([]);
-                      setColumnMapping({});
-                    }}
-                    data-testid="button-remove-csv"
-                    className="hover-elevate"
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="font-display text-lg text-baseball-navy tracking-tight">MAP COLUMNS</h4>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Player Name *</Label>
-                      <Select
-                        value={columnMapping.name}
-                        onValueChange={(value) => setColumnMapping(prev => ({ ...prev, name: value }))}
-                      >
-                        <SelectTrigger data-testid="select-name-column">
-                          <SelectValue placeholder="Select column" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {headers.map((header, index) => (
-                            <SelectItem key={index} value={index.toString()}>
-                              {header}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        Position(s) {!columnMapping.mlbamId && '*'}
-                      </Label>
-                      <Select
-                        value={columnMapping.positions || '__none__'}
-                        onValueChange={(value) => {
-                          const newMapping = { ...columnMapping };
-                          if (value === '__none__') {
-                            delete newMapping.positions;
-                          } else {
-                            newMapping.positions = value;
-                          }
-                          setColumnMapping(newMapping);
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-positions-column">
-                          <SelectValue placeholder={columnMapping.mlbamId ? "Optional (using MLBAM ID)" : "Select column"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- No Position Column --</SelectItem>
-                          {headers.map((header, index) => (
-                            <SelectItem key={index} value={index.toString()}>
-                              {header}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {columnMapping.mlbamId && !columnMapping.positions && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Positions will be looked up from reference data
-                        </p>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">Team</Label>
-                      <Select
-                        value={columnMapping.team || '__none__'}
-                        onValueChange={(value) => {
-                          const newMapping = { ...columnMapping };
-                          if (value === '__none__') {
-                            delete newMapping.team;
-                          } else {
-                            newMapping.team = value;
-                          }
-                          setColumnMapping(newMapping);
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-team-column">
-                          <SelectValue placeholder="Select column (optional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- No Team Column --</SelectItem>
-                          {headers.map((header, index) => (
-                            <SelectItem key={index} value={index.toString()}>
-                              {header}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div>
-                      <Label className="text-sm font-medium mb-2 block">
-                        MLBAM ID {!columnMapping.positions && '*'}
-                      </Label>
-                      <Select
-                        value={columnMapping.mlbamId || '__none__'}
-                        onValueChange={(value) => {
-                          const newMapping = { ...columnMapping };
-                          if (value === '__none__') {
-                            delete newMapping.mlbamId;
-                          } else {
-                            newMapping.mlbamId = value;
-                          }
-                          setColumnMapping(newMapping);
-                        }}
-                      >
-                        <SelectTrigger data-testid="select-mlbamid-column">
-                          <SelectValue placeholder={columnMapping.positions ? "Optional" : "Required for position lookup"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="__none__">-- No MLBAM ID Column --</SelectItem>
-                          {headers.map((header, index) => (
-                            <SelectItem key={index} value={index.toString()}>
-                              {header}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!columnMapping.positions && columnMapping.mlbamId && (
-                        <p className="text-xs text-baseball-navy mt-1">
-                          Will lookup positions from reference data
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  {!hasPositionOrMlbamId && (
-                    <div className="p-4 bg-warning/10 border border-warning/30 rounded-md">
-                      <p className="text-sm text-warning-foreground">
-                        Please map either <strong>Position</strong> or <strong>MLBAM ID</strong> column to determine player positions.
-                        If your CSV doesn't have positions, map the MLBAM ID column and positions will be looked up automatically.
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="border-t border-border pt-4">
-                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <Label className="text-sm font-medium">Stat Columns (click to add) *</Label>
-                        {scoringFormat && (
-                          <span className="text-xs text-baseball-navy bg-baseball-cream-dark px-2 py-0.5 rounded">
-                            Based on scoring format
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-xs text-muted-foreground font-mono">
-                        {Object.keys(columnMapping).filter(k => !['name', 'team', 'positions', 'mlbamId'].includes(k)).length} mapped
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                      {headers.filter((_, idx) => 
-                        idx.toString() !== columnMapping.name &&
-                        idx.toString() !== columnMapping.positions &&
-                        idx.toString() !== columnMapping.team &&
-                        idx.toString() !== columnMapping.mlbamId
-                      ).map((header) => {
-                        const actualIndex = headers.findIndex(h => h === header);
-                        const isMapped = Object.values(columnMapping).includes(actualIndex.toString());
-                        const relevantStats = getRelevantStats();
-                        const isRecommended = relevantStats.some(stat => 
-                          stat.toLowerCase() === header.toLowerCase() || 
-                          stat.toUpperCase() === header.toUpperCase() ||
-                          stat === header
-                        );
-                        
-                        return (
-                          <Button
-                            key={header}
-                            variant={isMapped ? "default" : "outline"}
-                            size="sm"
-                            onClick={() => handleAddStatColumn(header, actualIndex.toString())}
-                            className={`justify-start hover-elevate ${!isMapped && isRecommended ? 'border-baseball-navy border-2' : ''}`}
-                            data-testid={`button-stat-${header.toLowerCase()}`}
-                          >
-                            {isMapped && <Check className="h-3 w-3 mr-2" />}
-                            {header}
-                            {!isMapped && isRecommended && <span className="ml-auto text-xs text-baseball-navy">★</span>}
-                          </Button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {isFetchingPositions && (
-                  <div className="p-4 bg-baseball-cream rounded-md border border-border space-y-2">
-                    <div className="flex items-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin text-baseball-navy" />
-                      <span className="text-sm font-medium">Looking up player positions...</span>
-                    </div>
-                    <Progress value={fetchProgress} className="h-2" />
-                    <p className="text-xs text-muted-foreground">{Math.round(fetchProgress)}% complete</p>
-                  </div>
-                )}
-
-                {parsedData.length > 0 && (
-                  <div className="border border-border rounded-lg overflow-hidden">
-                    <div className="bg-baseball-leather text-baseball-cream px-4 py-2">
-                      <p className="text-sm font-medium">Preview (first 5 rows)</p>
-                    </div>
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            {headers.map((header, index) => (
-                              <TableHead key={index} className="font-semibold whitespace-nowrap">
-                                {header}
-                              </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {parsedData.slice(0, 5).map((row, rowIndex) => (
-                            <TableRow key={rowIndex}>
-                              {row.map((cell, cellIndex) => (
-                                <TableCell key={cellIndex} className="font-mono text-sm">
-                                  {cell}
-                                </TableCell>
-                              ))}
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex justify-end">
-                  <Button
-                    onClick={handleImport}
-                    size="lg"
-                    disabled={!columnMapping.name || !hasPositionOrMlbamId || isFetchingPositions}
-                    className="bg-baseball-navy hover-elevate active-elevate-2"
-                    data-testid="button-import-projections"
-                  >
-                    {isFetchingPositions ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        Fetching Positions...
-                      </>
-                    ) : (
-                      'Import Projections'
+                  <div className="flex gap-2">
+                    {hittersComplete && (
+                      <Badge variant="secondary">
+                        {hittersFile?.playerCount || hittersState.projections.length} hitters
+                      </Badge>
                     )}
-                  </Button>
+                    {pitchersComplete && (
+                      <Badge variant="secondary">
+                        {pitchersFile?.playerCount || pitchersState.projections.length} pitchers
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

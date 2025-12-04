@@ -65,12 +65,13 @@ Preferred communication style: Simple, everyday language.
 - No backend database required
 
 **Data Import:**
-- CSV file upload using PapaParse library
-- Dynamic column mapping interface for flexible projection formats
-- Support for both hitting and pitching statistics
-- Sample data available for quick start
+- Multi-file CSV upload supporting separate hitter and pitcher files
+- Dual-panel upload interface with tabs for Hitters and Pitchers
+- Per-file column mapping with auto-detection based on scoring format
+- Automatic merge/dedupe of projections (handles two-way players like Shohei Ohtani)
 - CSV-based position lookup using MLBAM ID (reference file: attached_assets/mlb_player_positions.csv)
 - Position column is optional when MLBAM ID is provided - positions will be auto-matched from reference data
+- ProjectionFile metadata tracks each uploaded file (kind, fileName, playerCount, importedAt)
 
 ### Backend Architecture
 

@@ -8,6 +8,7 @@ import type {
   DraftState,
   DraftPick,
   AppState,
+  ProjectionFile,
 } from '@shared/schema';
 
 interface AppContextType {
@@ -22,6 +23,11 @@ interface AppContextType {
   
   playerProjections: PlayerProjection[];
   setPlayerProjections: (projections: PlayerProjection[]) => void;
+  
+  projectionFiles: ProjectionFile[];
+  setProjectionFiles: (files: ProjectionFile[]) => void;
+  addProjectionFile: (file: ProjectionFile) => void;
+  removeProjectionFile: (fileId: string) => void;
   
   playerValues: PlayerValue[];
   setPlayerValues: (values: PlayerValue[]) => void;
@@ -69,6 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [scoringFormat, setScoringFormatState] = useState<ScoringFormat | null>(null);
   const [valueCalculationSettings, setValueCalculationSettingsState] = useState<ValueCalculationSettings | null>(null);
   const [playerProjections, setPlayerProjectionsState] = useState<PlayerProjection[]>([]);
+  const [projectionFiles, setProjectionFilesState] = useState<ProjectionFile[]>([]);
   const [playerValues, setPlayerValuesState] = useState<PlayerValue[]>([]);
   const [draftState, setDraftStateState] = useState<DraftState | null>(null);
   const [myTeamName, setMyTeamNameState] = useState<string>(DEFAULT_MY_TEAM);
@@ -92,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (parsed.scoringFormat) setScoringFormatState(parsed.scoringFormat);
         if (parsed.valueCalculationSettings) setValueCalculationSettingsState(parsed.valueCalculationSettings);
         if (parsed.playerProjections) setPlayerProjectionsState(parsed.playerProjections);
+        if (parsed.projectionFiles) setProjectionFilesState(parsed.projectionFiles);
         if (parsed.playerValues) setPlayerValuesState(parsed.playerValues);
         
         const normalizedDraftState = normalizeDraftState(parsed.draftState, teamName);
@@ -124,12 +132,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       scoringFormat: overrides.scoringFormat ?? scoringFormat ?? undefined,
       valueCalculationSettings: overrides.valueCalculationSettings ?? valueCalculationSettings ?? undefined,
       playerProjections: overrides.playerProjections ?? playerProjections,
+      projectionFiles: overrides.projectionFiles ?? projectionFiles,
       playerValues: overrides.playerValues ?? playerValues,
       draftState: normalizeDraftState(draftStateToUse, teamName),
       myTeamName: teamName,
       targetedPlayerIds: overrides.targetedPlayerIds ?? targetedPlayerIds,
     };
-  }, [leagueSettings, scoringFormat, valueCalculationSettings, playerProjections, playerValues, draftState, targetedPlayerIds]);
+  }, [leagueSettings, scoringFormat, valueCalculationSettings, playerProjections, projectionFiles, playerValues, draftState, targetedPlayerIds]);
 
   const saveToStorage = useCallback((overrides: Partial<ExtendedAppState> = {}) => {
     if (isClearingRef.current) return;
@@ -139,6 +148,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (snapshot.scoringFormat) toSave.scoringFormat = snapshot.scoringFormat;
     if (snapshot.valueCalculationSettings) toSave.valueCalculationSettings = snapshot.valueCalculationSettings;
     if (snapshot.playerProjections?.length) toSave.playerProjections = snapshot.playerProjections;
+    if (snapshot.projectionFiles?.length) toSave.projectionFiles = snapshot.projectionFiles;
     if (snapshot.playerValues?.length) toSave.playerValues = snapshot.playerValues;
     if (snapshot.draftState) toSave.draftState = snapshot.draftState;
     if (snapshot.myTeamName) toSave.myTeamName = snapshot.myTeamName;
@@ -164,6 +174,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setPlayerProjections = useCallback((projections: PlayerProjection[]) => {
     setPlayerProjectionsState(projections);
     saveToStorage({ playerProjections: projections });
+  }, [saveToStorage]);
+
+  const setProjectionFiles = useCallback((files: ProjectionFile[]) => {
+    setProjectionFilesState(files);
+    saveToStorage({ projectionFiles: files });
+  }, [saveToStorage]);
+
+  const addProjectionFile = useCallback((file: ProjectionFile) => {
+    setProjectionFilesState(prev => {
+      const existingIndex = prev.findIndex(f => f.kind === file.kind);
+      let newFiles: ProjectionFile[];
+      if (existingIndex >= 0) {
+        newFiles = [...prev];
+        newFiles[existingIndex] = file;
+      } else {
+        newFiles = [...prev, file];
+      }
+      saveToStorage({ projectionFiles: newFiles });
+      return newFiles;
+    });
+  }, [saveToStorage]);
+
+  const removeProjectionFile = useCallback((fileId: string) => {
+    setProjectionFilesState(prev => {
+      const newFiles = prev.filter(f => f.id !== fileId);
+      saveToStorage({ projectionFiles: newFiles });
+      return newFiles;
+    });
   }, [saveToStorage]);
 
   const setPlayerValues = useCallback((values: PlayerValue[]) => {
@@ -260,6 +298,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setScoringFormatState(null);
     setValueCalculationSettingsState(null);
     setPlayerProjectionsState([]);
+    setProjectionFilesState([]);
     setPlayerValuesState([]);
     setDraftStateState(null);
     setMyTeamNameState(DEFAULT_MY_TEAM);
@@ -280,6 +319,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setValueCalculationSettings,
         playerProjections,
         setPlayerProjections,
+        projectionFiles,
+        setProjectionFiles,
+        addProjectionFile,
+        removeProjectionFile,
         playerValues,
         setPlayerValues,
         draftState,
