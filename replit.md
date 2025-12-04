@@ -67,11 +67,13 @@ Preferred communication style: Simple, everyday language.
 **Data Import:**
 - Multi-file CSV upload supporting separate hitter and pitcher files
 - Dual-panel upload interface with tabs for Hitters and Pitchers
-- Per-file column mapping with auto-detection based on scoring format
+- Per-file column mapping with auto-detection based on scoring format (hitting stats for hitters, pitching stats for pitchers)
 - Automatic merge/dedupe of projections (handles two-way players like Shohei Ohtani)
 - CSV-based position lookup using MLBAM ID (reference file: attached_assets/mlb_player_positions.csv)
 - Position column is optional when MLBAM ID is provided - positions will be auto-matched from reference data
 - ProjectionFile metadata tracks each uploaded file (kind, fileName, playerCount, importedAt)
+- Merge logic uses context playerProjections filtered by identifyPlayerType to persist between page navigation/reload
+- Completion badges reflect uploaded file counts from context, not ephemeral component state
 
 ### Backend Architecture
 
