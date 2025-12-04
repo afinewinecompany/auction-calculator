@@ -122,7 +122,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
               const statLower = stat.toLowerCase();
               const statUpper = stat.toUpperCase();
               if (lower === statLower || headerUpper === statUpper || header === stat) {
-                autoMapping[header] = index.toString();
+                autoMapping[stat] = index.toString();
               }
             });
           });
@@ -255,7 +255,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
         
         if (hasPositions) {
           const positionsStr = row[parseInt(state.columnMapping.positions)]?.trim() || '';
-          const parsedPositions = positionsStr.split(/[,/]/).map(p => p.trim()).filter(Boolean);
+          const parsedPositions = positionsStr.split(/[,/]/).map(p => p.trim().toUpperCase()).filter(Boolean);
           if (parsedPositions.length > 0) {
             positions = parsedPositions;
           }
@@ -559,18 +559,20 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                 ).map((header) => {
                   const actualIndex = state.headers.findIndex(h => h === header);
                   const isMapped = Object.values(state.columnMapping).includes(actualIndex.toString());
-                  const isRecommended = relevantStats.some(stat => 
+                  const matchingStat = relevantStats.find(stat => 
                     stat.toLowerCase() === header.toLowerCase() || 
                     stat.toUpperCase() === header.toUpperCase() ||
                     stat === header
                   );
+                  const isRecommended = !!matchingStat;
+                  const statKeyToUse = matchingStat || header;
                   
                   return (
                     <Button
                       key={header}
                       variant={isMapped ? "default" : "outline"}
                       size="sm"
-                      onClick={() => handleAddStatColumn(kind, header, actualIndex.toString())}
+                      onClick={() => handleAddStatColumn(kind, statKeyToUse, actualIndex.toString())}
                       className={`hover-elevate ${!isMapped && isRecommended ? 'border-baseball-navy border-2' : ''}`}
                       data-testid={`button-${kind}-stat-${header.toLowerCase()}`}
                     >
