@@ -13,6 +13,9 @@ interface CategoryStats {
   values: number[];
 }
 
+const PITCHER_POSITIONS = ['SP', 'RP', 'P'];
+const isPitcherPos = (pos: string) => PITCHER_POSITIONS.includes(pos.toUpperCase());
+
 export function calculateRecommendedBudgetSplit(
   projections: PlayerProjection[],
   leagueSettings: LeagueSettings,
@@ -23,10 +26,10 @@ export function calculateRecommendedBudgetSplit(
   }
 
   const hitters = projections.filter(p => 
-    p.positions.some(pos => !['SP', 'RP', 'P'].includes(pos))
+    p.positions.some(pos => !isPitcherPos(pos))
   );
   const pitchers = projections.filter(p => 
-    p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos))
+    p.positions.some(pos => isPitcherPos(pos))
   );
 
   if (hitters.length === 0 || pitchers.length === 0) {
@@ -161,10 +164,10 @@ export function calculatePlayerValues(
   const pitcherBudget = totalBudget * (pitcherBudgetPercent / 100);
 
   const hitters = projections.filter(p => 
-    p.positions.some(pos => !['SP', 'RP', 'P'].includes(pos))
+    p.positions.some(pos => !isPitcherPos(pos))
   );
   const pitchers = projections.filter(p => 
-    p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos))
+    p.positions.some(pos => isPitcherPos(pos))
   );
 
   const hitterReplacementLevel = calculateReplacementLevel(leagueSettings, 'hitter');
