@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useAppContext } from '@/lib/app-context';
-import { calculatePlayerValues } from '@/lib/calculations';
+import { calculatePlayerValues, calculateRecommendedBudgetSplit } from '@/lib/calculations';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Calculator, Check, ChevronDown, ChevronRight } from 'lucide-react';
+import { Calculator, Check, ChevronDown, ChevronRight, Sparkles, RotateCcw } from 'lucide-react';
 import type { ValueCalculationSettings } from '@shared/schema';
 
 interface ValueCalculationPanelProps {
@@ -28,6 +28,13 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
     setPlayerValues,
   } = useAppContext();
 
+  const recommendedSplit = useMemo(() => {
+    if (!leagueSettings || !scoringFormat || playerProjections.length === 0) {
+      return { hitterPercent: 65, reason: 'Default split' };
+    }
+    return calculateRecommendedBudgetSplit(playerProjections, leagueSettings, scoringFormat);
+  }, [playerProjections, leagueSettings, scoringFormat]);
+
   const [settings, setSettings] = useState<ValueCalculationSettings>(
     valueCalculationSettings || {
       method: 'z-score',
@@ -37,7 +44,20 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
     }
   );
 
+  const [lastAppliedRecommendation, setLastAppliedRecommendation] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!valueCalculationSettings && 
+        recommendedSplit.hitterPercent !== 65 && 
+        lastAppliedRecommendation !== recommendedSplit.hitterPercent) {
+      setSettings(prev => ({ ...prev, hitterBudgetPercent: recommendedSplit.hitterPercent }));
+      setLastAppliedRecommendation(recommendedSplit.hitterPercent);
+    }
+  }, [recommendedSplit.hitterPercent, valueCalculationSettings, lastAppliedRecommendation]);
+
   const [isCalculating, setIsCalculating] = useState(false);
+  
+  const isUsingRecommended = settings.hitterBudgetPercent === recommendedSplit.hitterPercent;
 
   const handleCalculate = () => {
     if (!leagueSettings || !scoringFormat) return;
@@ -153,12 +173,29 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
 
             <div className="space-y-4">
               <div>
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <Label className="text-base font-semibold">Hitter/Pitcher Budget Split</Label>
-                  <span className="text-sm font-mono font-semibold text-baseball-navy">
-                    {settings.hitterBudgetPercent}% / {100 - settings.hitterBudgetPercent}%
-                  </span>
+                  <div className="flex items-center gap-3">
+                    {playerProjections.length > 0 && (
+                      <Button
+                        variant={isUsingRecommended ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setSettings(prev => ({ ...prev, hitterBudgetPercent: recommendedSplit.hitterPercent }))}
+                        className={isUsingRecommended ? "bg-baseball-green" : "hover-elevate"}
+                        data-testid="button-use-recommended-split"
+                      >
+                        <Sparkles className="h-3 w-3 mr-1" />
+                        {isUsingRecommended ? 'Using Recommended' : `Use Recommended (${recommendedSplit.hitterPercent}%)`}
+                      </Button>
+                    )}
+                    <span className="text-sm font-mono font-semibold text-baseball-navy">
+                      {settings.hitterBudgetPercent}% / {100 - settings.hitterBudgetPercent}%
+                    </span>
+                  </div>
                 </div>
+                {playerProjections.length > 0 && recommendedSplit.reason !== 'Default split' && (
+                  <p className="text-xs text-muted-foreground mb-3">{recommendedSplit.reason}</p>
+                )}
                 <Slider
                   value={[settings.hitterBudgetPercent]}
                   onValueChange={([value]) => setSettings(prev => ({ ...prev, hitterBudgetPercent: value }))}

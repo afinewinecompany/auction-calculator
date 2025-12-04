@@ -64,12 +64,17 @@ export default function DraftRoom() {
 
   const scoringFormatHash = useMemo(() => {
     if (!scoringFormat) return '';
-    const { type, hittingCategories, pitchingCategories, hittingPoints, pitchingPoints } = scoringFormat;
-    const hitCats = hittingCategories?.join(',') ?? '';
-    const pitchCats = pitchingCategories?.join(',') ?? '';
-    const hitPts = hittingPoints ? Object.entries(hittingPoints).map(([k, v]) => `${k}:${v}`).join(',') : '';
-    const pitchPts = pitchingPoints ? Object.entries(pitchingPoints).map(([k, v]) => `${k}:${v}`).join(',') : '';
-    return `${type}:${hitCats}:${pitchCats}:${hitPts}:${pitchPts}`;
+    const { type } = scoringFormat;
+    
+    if (type === 'h2h-points') {
+      const hitPts = Object.entries(scoringFormat.hittingPoints).map(([k, v]) => `${k}:${v}`).join(',');
+      const pitchPts = Object.entries(scoringFormat.pitchingPoints).map(([k, v]) => `${k}:${v}`).join(',');
+      return `${type}::${hitPts}:${pitchPts}`;
+    } else {
+      const hitCats = scoringFormat.hittingCategories.join(',');
+      const pitchCats = scoringFormat.pitchingCategories.join(',');
+      return `${type}:${hitCats}:${pitchCats}::`;
+    }
   }, [scoringFormat]);
 
   useEffect(() => {
@@ -227,6 +232,7 @@ export default function DraftRoom() {
             <DraftPlayerTable 
               players={playerValues}
               onPlayerSelect={handlePlayerSelect}
+              onQuickDraft={handleDraftConfirm}
             />
           </div>
 

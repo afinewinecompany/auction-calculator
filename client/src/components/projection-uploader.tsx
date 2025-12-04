@@ -22,8 +22,24 @@ interface ProjectionUploaderProps {
 }
 
 export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false, onToggle }: ProjectionUploaderProps) {
-  const { playerProjections, setPlayerProjections } = useAppContext();
+  const { playerProjections, setPlayerProjections, scoringFormat } = useAppContext();
   const { toast } = useToast();
+  
+  const getRelevantStats = useCallback(() => {
+    if (!scoringFormat) return [];
+    
+    if (scoringFormat.type === 'h2h-points') {
+      return [
+        ...Object.keys(scoringFormat.hittingPoints || {}),
+        ...Object.keys(scoringFormat.pitchingPoints || {}),
+      ];
+    } else {
+      return [
+        ...(scoringFormat.hittingCategories || []),
+        ...(scoringFormat.pitchingCategories || []),
+      ];
+    }
+  }, [scoringFormat]);
   
   const [csvFile, setCsvFile] = useState<File | null>(null);
   const [parsedData, setParsedData] = useState<string[][] | null>(null);
@@ -70,20 +86,40 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           setParsedData(filteredData.slice(1));
           
           const autoMapping: Record<string, string> = {};
+          const relevantStats = getRelevantStats();
+          
           filteredData[0].forEach((header, index) => {
             const lower = header.toLowerCase().trim();
+            const headerUpper = header.toUpperCase().trim();
+            
             if (lower.includes('name') || lower === 'player') autoMapping.name = index.toString();
             if (lower.includes('team')) autoMapping.team = index.toString();
             if (lower.includes('pos') && !lower.includes('opp')) autoMapping.positions = index.toString();
             if (lower === 'mlbamid' || lower === 'mlbam_id' || lower === 'playerid' || lower === 'mlb_id' || lower === 'idmlbam') {
               autoMapping.mlbamId = index.toString();
             }
+            
+            if (relevantStats.length > 0) {
+              relevantStats.forEach(stat => {
+                const statLower = stat.toLowerCase();
+                const statUpper = stat.toUpperCase();
+                if (lower === statLower || headerUpper === statUpper || header === stat) {
+                  autoMapping[header] = index.toString();
+                }
+              });
+            }
           });
           setColumnMapping(autoMapping);
           
+          const autoMappedStats = Object.keys(autoMapping).filter(
+            k => !['name', 'team', 'positions', 'mlbamId'].includes(k)
+          );
+          
           toast({
             title: 'CSV loaded successfully',
-            description: `Found ${filteredData.length - 1} players`,
+            description: autoMappedStats.length > 0 
+              ? `Found ${filteredData.length - 1} players, auto-mapped ${autoMappedStats.length} stat columns from scoring format`
+              : `Found ${filteredData.length - 1} players`,
           });
         } else {
           toast({
@@ -490,8 +526,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                   )}
 
                   <div className="border-t border-border pt-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <Label className="text-sm font-medium">Stat Columns (click to add) *</Label>
+                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm font-medium">Stat Columns (click to add) *</Label>
+                        {scoringFormat && (
+                          <span className="text-xs text-baseball-navy bg-baseball-cream-dark px-2 py-0.5 rounded">
+                            Based on scoring format
+                          </span>
+                        )}
+                      </div>
                       <span className="text-xs text-muted-foreground font-mono">
                         {Object.keys(columnMapping).filter(k => !['name', 'team', 'positions', 'mlbamId'].includes(k)).length} mapped
                       </span>
@@ -505,6 +548,12 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       ).map((header) => {
                         const actualIndex = headers.findIndex(h => h === header);
                         const isMapped = Object.values(columnMapping).includes(actualIndex.toString());
+                        const relevantStats = getRelevantStats();
+                        const isRecommended = relevantStats.some(stat => 
+                          stat.toLowerCase() === header.toLowerCase() || 
+                          stat.toUpperCase() === header.toUpperCase() ||
+                          stat === header
+                        );
                         
                         return (
                           <Button
@@ -512,11 +561,12 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                             variant={isMapped ? "default" : "outline"}
                             size="sm"
                             onClick={() => handleAddStatColumn(header, actualIndex.toString())}
-                            className="justify-start hover-elevate"
+                            className={`justify-start hover-elevate ${!isMapped && isRecommended ? 'border-baseball-navy border-2' : ''}`}
                             data-testid={`button-stat-${header.toLowerCase()}`}
                           >
                             {isMapped && <Check className="h-3 w-3 mr-2" />}
                             {header}
+                            {!isMapped && isRecommended && <span className="ml-auto text-xs text-baseball-navy">★</span>}
                           </Button>
                         );
                       })}

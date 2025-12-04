@@ -13,6 +13,117 @@ interface CategoryStats {
   values: number[];
 }
 
+export function calculateRecommendedBudgetSplit(
+  projections: PlayerProjection[],
+  leagueSettings: LeagueSettings,
+  scoringFormat: ScoringFormat
+): { hitterPercent: number; reason: string } {
+  if (projections.length === 0) {
+    return { hitterPercent: 65, reason: 'Default split (no projections loaded)' };
+  }
+
+  const hitters = projections.filter(p => 
+    p.positions.some(pos => !['SP', 'RP', 'P'].includes(pos))
+  );
+  const pitchers = projections.filter(p => 
+    p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos))
+  );
+
+  if (hitters.length === 0 || pitchers.length === 0) {
+    return { hitterPercent: 65, reason: 'Default split (missing hitter or pitcher data)' };
+  }
+
+  const hitterReplacementLevel = calculateReplacementLevel(leagueSettings, 'hitter');
+  const pitcherReplacementLevel = calculateReplacementLevel(leagueSettings, 'pitcher');
+
+  const hitterZScores = calculatePlayerZScoreTotals(hitters, scoringFormat, 'hitter');
+  const pitcherZScores = calculatePlayerZScoreTotals(pitchers, scoringFormat, 'pitcher');
+
+  const topHitters = hitterZScores
+    .sort((a, b) => b.totalZScore - a.totalZScore)
+    .slice(0, hitterReplacementLevel);
+  
+  const topPitchers = pitcherZScores
+    .sort((a, b) => b.totalZScore - a.totalZScore)
+    .slice(0, pitcherReplacementLevel);
+
+  const totalHitterValue = topHitters.reduce((sum, p) => sum + Math.max(0, p.totalZScore), 0);
+  const totalPitcherValue = topPitchers.reduce((sum, p) => sum + Math.max(0, p.totalZScore), 0);
+  const totalValue = totalHitterValue + totalPitcherValue;
+
+  if (totalValue === 0) {
+    return { hitterPercent: 65, reason: 'Default split (insufficient stat data)' };
+  }
+
+  const rawHitterPercent = (totalHitterValue / totalValue) * 100;
+  
+  const clampedPercent = Math.max(40, Math.min(80, Math.round(rawHitterPercent / 5) * 5));
+
+  const reason = `Based on z-score analysis: ${hitterReplacementLevel} hitters (${totalHitterValue.toFixed(0)} total z-score) vs ${pitcherReplacementLevel} pitchers (${totalPitcherValue.toFixed(0)} total z-score)`;
+
+  return { hitterPercent: clampedPercent, reason };
+}
+
+function calculatePlayerZScoreTotals(
+  players: PlayerProjection[],
+  scoringFormat: ScoringFormat,
+  type: 'hitter' | 'pitcher'
+): { player: PlayerProjection; totalZScore: number }[] {
+  let categories: string[];
+  let categoryWeights: Record<string, number> = {};
+
+  if (scoringFormat.type === 'h2h-points') {
+    const points = type === 'hitter' ? scoringFormat.hittingPoints : scoringFormat.pitchingPoints;
+    categories = Object.keys(points);
+    categoryWeights = points;
+  } else {
+    categories = type === 'hitter' ? scoringFormat.hittingCategories : scoringFormat.pitchingCategories;
+    categories.forEach(cat => categoryWeights[cat] = 1);
+  }
+
+  const categoryStats: Record<string, CategoryStats> = {};
+  
+  categories.forEach(category => {
+    const values = players
+      .map(p => p.stats[category] || 0)
+      .filter(v => !isNaN(v));
+    
+    if (values.length < 2) return;
+    
+    const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+    const variance = values.reduce((sum, v) => sum + Math.pow(v - mean, 2), 0) / values.length;
+    const stdDev = Math.sqrt(variance);
+    
+    categoryStats[category] = { mean, stdDev, values };
+  });
+
+  return players.map(player => {
+    let totalWeightedZScore = 0;
+    let totalWeight = 0;
+    
+    categories.forEach(category => {
+      const stats = categoryStats[category];
+      if (!stats || stats.stdDev === 0) return;
+      
+      const playerValue = player.stats[category] || 0;
+      const zScore = (playerValue - stats.mean) / stats.stdDev;
+      
+      const weight = Math.abs(categoryWeights[category] || 1);
+      const isNegativeStat = category.toLowerCase().includes('era') || 
+                            category.toLowerCase().includes('whip') ||
+                            (category.toLowerCase() === 'k' && type === 'hitter');
+      
+      const adjustedZScore = isNegativeStat ? -zScore : zScore;
+      totalWeightedZScore += adjustedZScore * weight;
+      totalWeight += weight;
+    });
+
+    const avgZScore = totalWeight > 0 ? totalWeightedZScore / totalWeight : 0;
+    
+    return { player, totalZScore: avgZScore };
+  });
+}
+
 function calculateReplacementLevel(
   leagueSettings: LeagueSettings,
   type: 'hitter' | 'pitcher'

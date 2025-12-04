@@ -1,24 +1,29 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAppContext } from '@/lib/app-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Search, TrendingUp, TrendingDown, Star } from 'lucide-react';
-import type { PlayerValue } from '@shared/schema';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Search, TrendingUp, TrendingDown, Star, DollarSign } from 'lucide-react';
+import type { PlayerValue, DraftPick } from '@shared/schema';
 
 interface DraftPlayerTableProps {
   players: PlayerValue[];
   onPlayerSelect: (player: PlayerValue) => void;
+  onQuickDraft?: (playerId: string, actualPrice: number, isMyBid: boolean) => void;
 }
 
-export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTableProps) {
+export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: DraftPlayerTableProps) {
   const { toggleTargetPlayer, isPlayerTargeted, targetedPlayerIds } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [positionFilter, setPositionFilter] = useState<string>('all');
   const [showTargetsOnly, setShowTargetsOnly] = useState(false);
   const [hideDisabled, setHideDrafted] = useState(false);
+  const [showWithCostOnly, setShowWithCostOnly] = useState(false);
+  const [quickDraftPrices, setQuickDraftPrices] = useState<Record<string, string>>({});
+  const [quickDraftIsMyBid, setQuickDraftIsMyBid] = useState<Record<string, boolean>>({});
 
   const allPositions = useMemo(() => {
     const positions = new Set<string>();
@@ -28,11 +33,19 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
     return Array.from(positions).sort();
   }, [players]);
 
+  const playersWithCost = useMemo(() => {
+    return players.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
+  }, [players]);
+
   const filteredPlayers = useMemo(() => {
     let filtered = players;
 
     if (hideDisabled) {
       filtered = filtered.filter(p => !p.isDrafted);
+    }
+
+    if (showWithCostOnly) {
+      filtered = filtered.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
     }
 
     if (searchQuery) {
@@ -60,7 +73,34 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
       if (!aTargeted && bTargeted) return 1;
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
-  }, [players, searchQuery, positionFilter, hideDisabled, showTargetsOnly, isPlayerTargeted]);
+  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showTargetsOnly, isPlayerTargeted]);
+
+  const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
+    setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
+  }, []);
+
+  const handleQuickDraftSubmit = useCallback((player: PlayerValue) => {
+    if (!onQuickDraft) return;
+    
+    const priceStr = quickDraftPrices[player.id];
+    const price = parseInt(priceStr, 10);
+    
+    if (isNaN(price) || price < 1) return;
+    
+    const isMyBid = quickDraftIsMyBid[player.id] ?? false;
+    onQuickDraft(player.id, price, isMyBid);
+    
+    setQuickDraftPrices(prev => {
+      const next = { ...prev };
+      delete next[player.id];
+      return next;
+    });
+    setQuickDraftIsMyBid(prev => {
+      const next = { ...prev };
+      delete next[player.id];
+      return next;
+    });
+  }, [onQuickDraft, quickDraftPrices, quickDraftIsMyBid]);
 
   return (
     <div className="space-y-4">
@@ -107,6 +147,16 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
           >
             {hideDisabled ? 'Show All' : 'Hide Drafted'}
           </Button>
+
+          <Button
+            variant={showWithCostOnly ? "default" : "outline"}
+            onClick={() => setShowWithCostOnly(!showWithCostOnly)}
+            data-testid="button-toggle-with-cost"
+            className={showWithCostOnly ? "" : "hover-elevate"}
+          >
+            <DollarSign className="mr-2 h-4 w-4" />
+            {showWithCostOnly ? 'Show All' : `$2+ (${playersWithCost.length})`}
+          </Button>
         </div>
       </div>
 
@@ -123,6 +173,7 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
                 <TableHead className="text-baseball-cream font-bold">ORIG $</TableHead>
                 <TableHead className="text-baseball-cream font-bold">ADJ $</TableHead>
                 <TableHead className="text-baseball-cream font-bold">Δ</TableHead>
+                {onQuickDraft && <TableHead className="text-baseball-cream font-bold">QUICK DRAFT</TableHead>}
                 <TableHead className="text-baseball-cream font-bold">STATUS</TableHead>
               </TableRow>
             </TableHeader>
@@ -142,7 +193,10 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
                         ? 'opacity-50 bg-muted/50'
                         : 'hover-elevate cursor-pointer active-elevate-2'
                     } ${targeted && !player.isDrafted ? 'ring-2 ring-yellow-500 ring-inset' : ''}`}
-                    onClick={() => !player.isDrafted && onPlayerSelect(player)}
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('[data-quick-draft]')) return;
+                      if (!player.isDrafted) onPlayerSelect(player);
+                    }}
                     data-testid={`row-draft-player-${player.id}`}
                   >
                     <TableCell className="w-10">
@@ -194,6 +248,62 @@ export function DraftPlayerTable({ players, onPlayerSelect }: DraftPlayerTablePr
                         </div>
                       )}
                     </TableCell>
+                    {onQuickDraft && (
+                      <TableCell data-quick-draft onClick={(e) => e.stopPropagation()}>
+                        {!player.isDrafted && (
+                          <div className="flex items-center gap-2" data-quick-draft>
+                            <div className="flex items-center gap-1.5" data-quick-draft>
+                              <Checkbox
+                                id={`my-bid-${player.id}`}
+                                checked={quickDraftIsMyBid[player.id] ?? false}
+                                onCheckedChange={(checked) => 
+                                  setQuickDraftIsMyBid(prev => ({ ...prev, [player.id]: !!checked }))
+                                }
+                                data-testid={`checkbox-quick-my-bid-${player.id}`}
+                                data-quick-draft
+                              />
+                              <label 
+                                htmlFor={`my-bid-${player.id}`}
+                                className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap"
+                                data-quick-draft
+                              >
+                                Mine
+                              </label>
+                            </div>
+                            <div className="flex items-center gap-1" data-quick-draft>
+                              <span className="text-muted-foreground">$</span>
+                              <Input
+                                type="number"
+                                min="1"
+                                value={quickDraftPrices[player.id] ?? ''}
+                                onChange={(e) => handleQuickDraftPrice(player.id, e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    handleQuickDraftSubmit(player);
+                                  }
+                                }}
+                                placeholder={String(adjustedValue)}
+                                className="w-16 h-8 font-mono text-center"
+                                data-testid={`input-quick-draft-price-${player.id}`}
+                                data-quick-draft
+                              />
+                            </div>
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-8 px-2 bg-baseball-navy"
+                              onClick={() => handleQuickDraftSubmit(player)}
+                              disabled={!quickDraftPrices[player.id] || parseInt(quickDraftPrices[player.id]) < 1}
+                              data-testid={`button-quick-draft-confirm-${player.id}`}
+                              data-quick-draft
+                            >
+                              Draft
+                            </Button>
+                          </div>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell>
                       {player.isDrafted ? (
                         <Badge variant="secondary" className="bg-muted">
