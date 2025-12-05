@@ -46,7 +46,19 @@ Preferred communication style: Simple, everyday language.
 2. Scoring Format Selection - Choose between category-based or points-based scoring with preset templates
 3. Projection Upload - CSV import with column mapping for player statistics
 4. Value Calculation - Choose calculation method (Z-Score or SGP) with configurable parameters
-5. Draft Room - Live draft tracking with real-time inflation calculations
+5. Draft Room - Live draft tracking with real-time inflation calculations, pending bid system, and roster-based metrics
+
+**Draft Room Pending Bid System:**
+- Entering a price in Quick Draft input triggers automatic inflation recalculation
+- Players remain visible in the draft table until Draft button is clicked
+- Pending bids are tracked as "phantom picks" - they affect inflation but don't confirm the draft
+- When Draft button is clicked, the pending bid is cleared and the pick is confirmed
+- Inflation formula: remainingBudget = totalBudget - confirmedSpent - pendingSpent
+
+**Roster-Based Metrics:**
+- "Roster Spots Left" shows: (teamCount × totalRosterSpots) - playersDrafted - pendingBidsCount
+- "Avg $/Player" uses roster spots remaining as denominator instead of undrafted player count
+- Budget Remaining subtracts pending bids from the total
 
 **Calculation Engine (v2.0):**
 The rebuilt calculation engine implements per-position value analysis:
