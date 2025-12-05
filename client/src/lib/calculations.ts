@@ -212,8 +212,14 @@ function buildDraftablePoolWithPositionAllocation(
   positionReplacements: Map<string, PositionReplacementLevel>;
   hitterCount: number;
   pitcherCount: number;
+  playerIndexMap: Map<PlayerProjection, number>;
+  hitterZScoreMap: Map<PlayerProjection, number>;
+  pitcherZScoreMap: Map<PlayerProjection, number>;
 } {
   const { teamCount, positionRequirements } = leagueSettings;
+
+  const playerIndexMap = new Map<PlayerProjection, number>();
+  projections.forEach((p, i) => playerIndexMap.set(p, i));
 
   const allHitters: PlayerProjection[] = [];
   const allPitchers: PlayerProjection[] = [];
@@ -249,10 +255,13 @@ function buildDraftablePoolWithPositionAllocation(
     if (spotsNeeded === 0) return;
 
     const eligiblePlayers = allHitters
-      .filter(p => playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(projections.indexOf(p)))
+      .filter(p => {
+        const idx = playerIndexMap.get(p)!;
+        return playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(idx);
+      })
       .map(p => ({
         player: p,
-        index: projections.indexOf(p),
+        index: playerIndexMap.get(p)!,
         zScore: hitterZScoreMap.get(p) || 0,
       }))
       .sort((a, b) => b.zScore - a.zScore);
@@ -290,10 +299,13 @@ function buildDraftablePoolWithPositionAllocation(
     if (spotsNeeded === 0) return;
 
     const eligiblePlayers = allPitchers
-      .filter(p => playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(projections.indexOf(p)))
+      .filter(p => {
+        const idx = playerIndexMap.get(p)!;
+        return playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(idx);
+      })
       .map(p => ({
         player: p,
-        index: projections.indexOf(p),
+        index: playerIndexMap.get(p)!,
         zScore: pitcherZScoreMap.get(p) || 0,
       }))
       .sort((a, b) => b.zScore - a.zScore);
@@ -332,10 +344,10 @@ function buildDraftablePoolWithPositionAllocation(
     const benchPitcherSpots = benchSpots - benchHitterSpots;
 
     const remainingHitters = allHitters
-      .filter(p => !assignedPlayerIndices.has(projections.indexOf(p)))
+      .filter(p => !assignedPlayerIndices.has(playerIndexMap.get(p)!))
       .map(p => ({
         player: p,
-        index: projections.indexOf(p),
+        index: playerIndexMap.get(p)!,
         zScore: hitterZScoreMap.get(p) || 0,
       }))
       .sort((a, b) => b.zScore - a.zScore)
@@ -354,10 +366,10 @@ function buildDraftablePoolWithPositionAllocation(
     });
 
     const remainingPitchers = allPitchers
-      .filter(p => !assignedPlayerIndices.has(projections.indexOf(p)))
+      .filter(p => !assignedPlayerIndices.has(playerIndexMap.get(p)!))
       .map(p => ({
         player: p,
-        index: projections.indexOf(p),
+        index: playerIndexMap.get(p)!,
         zScore: pitcherZScoreMap.get(p) || 0,
       }))
       .sort((a, b) => b.zScore - a.zScore)
@@ -379,7 +391,15 @@ function buildDraftablePoolWithPositionAllocation(
   const hitterCount = draftablePlayers.filter(p => p.isHitter).length;
   const pitcherCount = draftablePlayers.filter(p => !p.isHitter).length;
 
-  return { draftablePlayers, positionReplacements, hitterCount, pitcherCount };
+  return { 
+    draftablePlayers, 
+    positionReplacements, 
+    hitterCount, 
+    pitcherCount,
+    playerIndexMap,
+    hitterZScoreMap,
+    pitcherZScoreMap
+  };
 }
 
 function adjustReplacementLevels(
@@ -545,32 +565,30 @@ export function calculatePlayerValues(
 ): PlayerValue[] {
   if (projections.length === 0) return [];
 
-  const { draftablePlayers, positionReplacements, hitterCount, pitcherCount } =
-    buildDraftablePoolWithPositionAllocation(projections, leagueSettings, scoringFormat);
+  const { 
+    draftablePlayers, 
+    positionReplacements, 
+    hitterCount, 
+    pitcherCount,
+    hitterZScoreMap,
+    pitcherZScoreMap 
+  } = buildDraftablePoolWithPositionAllocation(projections, leagueSettings, scoringFormat);
 
-  const allHitters = projections
-    .filter(p => identifyPlayerType(p) !== 'pitcher')
-    .map(p => ({ player: p, totalZScore: 0 }));
+  const allHitters: { player: PlayerProjection; totalZScore: number }[] = [];
+  const allPitchers: { player: PlayerProjection; totalZScore: number }[] = [];
 
-  const allPitchers = projections
-    .filter(p => identifyPlayerType(p) !== 'hitter')
-    .map(p => ({ player: p, totalZScore: 0 }));
-
-  const hitterZScores = calculatePlayerZScoreTotals(allHitters.map(h => h.player), scoringFormat, 'hitter');
-  const pitcherZScores = calculatePlayerZScoreTotals(allPitchers.map(p => p.player), scoringFormat, 'pitcher');
-
-  hitterZScores.forEach(hz => {
-    const found = allHitters.find(h => h.player === hz.player);
-    if (found) found.totalZScore = hz.totalZScore;
-  });
-
-  pitcherZScores.forEach(pz => {
-    const found = allPitchers.find(p => p.player === pz.player);
-    if (found) found.totalZScore = pz.totalZScore;
+  projections.forEach(p => {
+    const type = identifyPlayerType(p);
+    if (type === 'hitter' || type === 'both') {
+      allHitters.push({ player: p, totalZScore: hitterZScoreMap.get(p) || 0 });
+    }
+    if (type === 'pitcher' || type === 'both') {
+      allPitchers.push({ player: p, totalZScore: pitcherZScoreMap.get(p) || 0 });
+    }
   });
 
   const replacementMethod = settings.replacementLevelMethod || 'lastDrafted';
-  adjustReplacementLevels(positionReplacements, replacementMethod, hitterZScores, pitcherZScores, draftablePlayers);
+  adjustReplacementLevels(positionReplacements, replacementMethod, allHitters, allPitchers, draftablePlayers);
 
   calculateVARPerPosition(draftablePlayers, positionReplacements);
 
@@ -600,8 +618,18 @@ export function calculatePlayerValues(
     } else if (splitConfig.method === 'standard' && splitConfig.standardPreset) {
       hitterPercent = STANDARD_SPLITS[splitConfig.standardPreset].hitters;
     } else if (splitConfig.method === 'calculated') {
-      const rec = calculateRecommendedBudgetSplit(projections, leagueSettings, scoringFormat);
-      hitterPercent = rec.hitterPercent;
+      const hitterVAR = draftablePlayers
+        .filter(dp => dp.isHitter)
+        .reduce((sum, dp) => sum + Math.max(0, dp.totalZScore), 0);
+      const pitcherVAR = draftablePlayers
+        .filter(dp => !dp.isHitter)
+        .reduce((sum, dp) => sum + Math.max(0, dp.totalZScore), 0);
+      const totalVAR = hitterVAR + pitcherVAR;
+      
+      if (totalVAR > 0) {
+        const rawHitterPercent = (hitterVAR / totalVAR) * 100;
+        hitterPercent = Math.max(40, Math.min(80, Math.round(rawHitterPercent / 5) * 5));
+      }
     }
   }
 
@@ -622,24 +650,46 @@ export function calculatePlayerValues(
   const draftableMap = new Map<number, DraftablePlayer>();
   draftablePlayers.forEach(dp => draftableMap.set(dp.index, dp));
 
-  const allVARs = draftablePlayers.map(dp => dp.var).sort((a, b) => b - a);
+  const positiveVARs = draftablePlayers.filter(dp => dp.var > 0).map(dp => dp.var).sort((a, b) => b - a);
 
-  const playerValues: PlayerValue[] = projections.map((player, index) => {
+  const rawPlayerValues: { index: number; rawValue: number; draftablePlayer: DraftablePlayer | undefined; player: PlayerProjection }[] = [];
+  
+  projections.forEach((player, index) => {
     const draftablePlayer = draftableMap.get(index);
-    const isDraftable = !!draftablePlayer;
+    let rawValue = 0;
+    
+    if (draftablePlayer) {
+      if (draftablePlayer.var > 0) {
+        const dollarPerVAR = draftablePlayer.isHitter ? hitterDollarPerVAR : pitcherDollarPerVAR;
+        rawValue = 1 + draftablePlayer.var * dollarPerVAR;
+      } else {
+        rawValue = 1;
+      }
+    }
+    
+    rawPlayerValues.push({ index, rawValue, draftablePlayer, player });
+  });
 
-    let originalValue = 1;
+  const totalRawValue = rawPlayerValues.reduce((sum, p) => sum + p.rawValue, 0);
+  const scaleFactor = totalRawValue > 0 ? totalBudget / totalRawValue : 1;
+
+  const playerValues: PlayerValue[] = rawPlayerValues.map(({ index, rawValue, draftablePlayer, player }) => {
+    const isDraftable = !!draftablePlayer;
+    let originalValue = 0;
     let var_value = 0;
     let valueTier: ValueTier = 'replacement';
 
-    if (draftablePlayer && draftablePlayer.var > 0) {
-      const dollarPerVAR = draftablePlayer.isHitter ? hitterDollarPerVAR : pitcherDollarPerVAR;
-      originalValue = Math.max(1, Math.round(draftablePlayer.var * dollarPerVAR) + 1);
-      var_value = draftablePlayer.var;
+    if (draftablePlayer) {
+      if (draftablePlayer.var > 0) {
+        originalValue = Math.max(1, Math.round(rawValue * scaleFactor));
+        var_value = draftablePlayer.var;
 
-      if (settings.showTiers) {
-        const percentile = calculatePercentile(draftablePlayer.var, allVARs);
-        valueTier = assignValueTier(percentile);
+        if (settings.showTiers) {
+          const percentile = calculatePercentile(draftablePlayer.var, positiveVARs);
+          valueTier = assignValueTier(percentile);
+        }
+      } else {
+        originalValue = 1;
       }
     }
 
@@ -670,7 +720,7 @@ export function calculatePlayerValues(
   const totalAssignedValue = sortedValues.reduce((sum, p) => sum + p.originalValue, 0);
   console.log(`[Calculations] Generated ${sortedValues.length} player values. ` +
     `Draftable: ${draftablePlayers.length} (${hitterCount} hitters, ${pitcherCount} pitchers). ` +
-    `Total budget: $${totalBudget}, Distributable: $${distributableDollars}, Assigned: $${totalAssignedValue}. ` +
+    `Total budget: $${totalBudget}, Assigned: $${totalAssignedValue}. ` +
     `Split: ${hitterPercent}%/${100 - hitterPercent}%`);
 
   return sortedValues;

@@ -61,29 +61,45 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
   }, [recommendedSplit.hitterPercent, valueCalculationSettings, lastAppliedRecommendation]);
 
   const [isCalculating, setIsCalculating] = useState(false);
+  const [calculationProgress, setCalculationProgress] = useState(0);
 
   const isUsingRecommended = settings.hitterBudgetPercent === recommendedSplit.hitterPercent;
 
-  const handleCalculate = () => {
+  const handleCalculate = async () => {
     if (!leagueSettings || !scoringFormat) return;
 
     setIsCalculating(true);
+    setCalculationProgress(0);
     setValueCalculationSettings(settings);
 
-    requestAnimationFrame(() => {
-      const values = calculatePlayerValues(
-        playerProjections,
-        leagueSettings,
-        scoringFormat,
-        settings
-      );
+    await new Promise<void>((resolve) => {
+      setTimeout(() => {
+        setCalculationProgress(25);
+        
+        setTimeout(() => {
+          setCalculationProgress(50);
+          
+          const values = calculatePlayerValues(
+            playerProjections,
+            leagueSettings,
+            scoringFormat,
+            settings
+          );
 
-      setPlayerValues(values);
-
-      requestAnimationFrame(() => {
-        setIsCalculating(false);
-        onComplete();
-      });
+          setCalculationProgress(90);
+          
+          setTimeout(() => {
+            setPlayerValues(values);
+            setCalculationProgress(100);
+            
+            setTimeout(() => {
+              setIsCalculating(false);
+              onComplete();
+              resolve();
+            }, 100);
+          }, 50);
+        }, 50);
+      }, 50);
     });
   };
 
@@ -360,7 +376,21 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
               </div>
             </div>
 
-            <div className="flex justify-end pt-4">
+            <div className="flex flex-col items-end gap-3 pt-4">
+              {isCalculating && (
+                <div className="w-full max-w-xs">
+                  <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                    <span>Processing {playerProjections.length.toLocaleString()} players...</span>
+                    <span className="font-mono">{calculationProgress}%</span>
+                  </div>
+                  <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                    <div 
+                      className="bg-baseball-green h-full transition-all duration-150 ease-out"
+                      style={{ width: `${calculationProgress}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               <Button
                 onClick={handleCalculate}
                 size="lg"
