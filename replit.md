@@ -74,6 +74,8 @@ Preferred communication style: Simple, everyday language.
 - ProjectionFile metadata tracks each uploaded file (kind, fileName, playerCount, importedAt)
 - Merge logic uses context playerProjections filtered by identifyPlayerType to persist between page navigation/reload
 - Completion badges reflect uploaded file counts from context, not ephemeral component state
+- Stat alias mapping for common header variations (SO↔K, BA→AVG, etc.) to improve auto-mapping accuracy
+- Defensive position handling: blank position columns fall back to default positions (['UTIL'] for hitters, ['P'] for pitchers)
 
 ### Backend Architecture
 
