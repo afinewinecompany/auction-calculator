@@ -49,6 +49,28 @@ const createEmptyFileState = (): FileUploadState => ({
 const COMMON_HITTING_STATS = ['R', 'HR', 'RBI', 'SB', 'AVG', 'OBP', 'SLG', 'OPS', 'H', 'BB', 'SO', 'TB', '2B', '3B', 'CS'];
 const COMMON_PITCHING_STATS = ['W', 'L', 'SV', 'K', 'ERA', 'WHIP', 'QS', 'HLD', 'IP', 'SO', 'BB', 'H', 'ER', 'HR', 'K/9', 'BB/9'];
 
+const STAT_ALIASES: Record<string, string[]> = {
+  'K': ['SO', 'STRIKEOUTS', 'K'],
+  'SO': ['K', 'STRIKEOUTS', 'SO'],
+  'AVG': ['BA', 'BAVG', 'AVG'],
+  'OBP': ['OB%', 'OBP'],
+  'SLG': ['SLUG', 'SLG'],
+  'RBI': ['RBI', 'RBIS'],
+  'R': ['RUNS', 'R'],
+  'HR': ['HOMERS', 'HR'],
+  'SB': ['SB', 'STOLENBASES', 'STEALS'],
+  'W': ['WINS', 'W'],
+  'L': ['LOSSES', 'L'],
+  'SV': ['SAVES', 'SV'],
+  'ERA': ['ERA'],
+  'WHIP': ['WHIP'],
+  'IP': ['INN', 'INNINGS', 'IP'],
+  'QS': ['QUALITYSTARTS', 'QS'],
+  'HLD': ['HOLDS', 'HLD'],
+  'BB': ['WALKS', 'BB'],
+  'H': ['HITS', 'H'],
+};
+
 export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false, onToggle }: ProjectionUploaderProps) {
   const { 
     playerProjections, 
@@ -121,7 +143,13 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
             relevantStats.forEach(stat => {
               const statLower = stat.toLowerCase();
               const statUpper = stat.toUpperCase();
-              if (lower === statLower || headerUpper === statUpper || header === stat) {
+              
+              const aliases = STAT_ALIASES[statUpper] || [stat];
+              const headerMatches = aliases.some(alias => 
+                lower === alias.toLowerCase() || headerUpper === alias
+              );
+              
+              if (lower === statLower || headerUpper === statUpper || header === stat || headerMatches) {
                 autoMapping[stat] = index.toString();
               }
             });
@@ -251,7 +279,8 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           }
         });
 
-        let positions: string[] = kind === 'hitters' ? ['UTIL'] : ['P'];
+        const defaultPositions: string[] = kind === 'hitters' ? ['UTIL'] : ['P'];
+        let positions: string[] = defaultPositions;
         
         if (hasPositions) {
           const positionsStr = row[parseInt(state.columnMapping.positions)]?.trim() || '';
@@ -259,11 +288,22 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           if (parsedPositions.length > 0) {
             positions = parsedPositions;
           }
-        } else if (hasMlbamId && positionsByMlbamId) {
-          const mlbamId = row[parseInt(state.columnMapping.mlbamId)]?.trim();
-          if (mlbamId && positionsByMlbamId.has(mlbamId)) {
-            positions = positionsByMlbamId.get(mlbamId) || positions;
+        } 
+        
+        if (positions.length === 0 || (positions.length === 1 && positions[0] === (kind === 'hitters' ? 'UTIL' : 'P'))) {
+          if (hasMlbamId && positionsByMlbamId) {
+            const mlbamId = row[parseInt(state.columnMapping.mlbamId)]?.trim();
+            if (mlbamId && positionsByMlbamId.has(mlbamId)) {
+              const lookedUpPositions = positionsByMlbamId.get(mlbamId);
+              if (lookedUpPositions && lookedUpPositions.length > 0) {
+                positions = lookedUpPositions;
+              }
+            }
           }
+        }
+        
+        if (positions.length === 0) {
+          positions = defaultPositions;
         }
 
         const mlbamId = hasMlbamId ? row[parseInt(state.columnMapping.mlbamId)]?.trim() : undefined;
