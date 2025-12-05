@@ -41,7 +41,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   }, [players]);
 
   const playersWithCost = useMemo(() => {
-    return players.filter(p => p.isDraftable !== false && !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
+    return players.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
   }, [players]);
 
   const targetedSet = useMemo(() => new Set(targetedPlayerIds), [targetedPlayerIds]);
@@ -49,7 +49,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const isTargeted = useCallback((playerId: string) => targetedSet.has(playerId), [targetedSet]);
 
   const filteredPlayers = useMemo(() => {
-    let filtered = players.filter(p => p.isDraftable !== false);
+    let filtered = players;
 
     if (hideDrafted) {
       filtered = filtered.filter(p => !p.isDrafted);

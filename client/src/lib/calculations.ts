@@ -788,7 +788,7 @@ export function calculateInflation(
   const inflationRate = (remainingBudget / remainingValue) - 1;
 
   const adjustedValues = playerValues.map(player => {
-    if (draftedPlayerIds.has(player.id) || player.isDrafted) {
+    if (draftedPlayerIds.has(player.id)) {
       const draftPick = draftPicks.find(p => p.playerId === player.id);
       return {
         ...player,
