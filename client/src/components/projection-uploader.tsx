@@ -287,6 +287,9 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
 
+    console.log(`[Projection Import] ${kind}: ${projections.length} players imported`);
+    console.log(`[Projection Import] Sample positions:`, projections.slice(0, 5).map(p => ({ name: p.name, positions: p.positions })));
+    
     setState(prev => ({ ...prev, projections }));
     
     const fileRecord: ProjectionFile = {
@@ -308,7 +311,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     if (otherTypeProjections.length > 0) {
       const hitterProjs = kind === 'hitters' ? projections : existingHitters;
       const pitcherProjs = kind === 'hitters' ? existingPitchers : projections;
+      console.log(`[Projection Merge] Hitters: ${hitterProjs.length}, Pitchers: ${pitcherProjs.length}`);
       const { mergedProjections, dualPlayersCount } = mergeProjections(hitterProjs, pitcherProjs);
+      console.log(`[Projection Merge] Result: ${mergedProjections.length} total, ${dualPlayersCount} two-way`);
+      
+      const pitchersInResult = mergedProjections.filter(p => 
+        p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos.toUpperCase()))
+      );
+      console.log(`[Projection Merge] Pitchers in result: ${pitchersInResult.length}`);
+      
       setPlayerProjections(mergedProjections);
       
       toast({
@@ -318,6 +329,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       onComplete();
     } else {
       setPlayerProjections(projections);
+      console.log(`[Projection Import] Saved ${projections.length} ${kind} to context`);
       toast({
         title: `${kind === 'hitters' ? 'Hitters' : 'Pitchers'} imported`,
         description: `${projections.length} players imported. Upload ${otherKind} to complete.`,

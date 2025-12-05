@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, memo, useEffect } from 'react';
 import { useAppContext } from '@/lib/app-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -6,8 +6,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, TrendingUp, TrendingDown, Star, DollarSign } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PlayerValue, DraftPick } from '@shared/schema';
+
+const ROWS_PER_PAGE = 50;
 
 interface DraftPlayerTableProps {
   players: PlayerValue[];
@@ -24,6 +26,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
   const [showWithCostOnly, setShowWithCostOnly] = useState(false);
   const [quickDraftPrices, setQuickDraftPrices] = useState<Record<string, string>>({});
   const [quickDraftIsMyBid, setQuickDraftIsMyBid] = useState<Record<string, boolean>>({});
+  const [currentPage, setCurrentPage] = useState(0);
 
   const allPositions = useMemo(() => {
     const positions = new Set<string>();
@@ -37,6 +40,10 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
     return players.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
   }, [players]);
 
+  const targetedSet = useMemo(() => new Set(targetedPlayerIds), [targetedPlayerIds]);
+  
+  const isTargeted = useCallback((playerId: string) => targetedSet.has(playerId), [targetedSet]);
+
   const filteredPlayers = useMemo(() => {
     let filtered = players;
 
@@ -49,8 +56,9 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
     }
 
     if (searchQuery) {
+      const lowerQuery = searchQuery.toLowerCase();
       filtered = filtered.filter(player =>
-        player.name.toLowerCase().includes(searchQuery.toLowerCase())
+        player.name.toLowerCase().includes(lowerQuery)
       );
     }
 
@@ -61,19 +69,35 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
     }
 
     if (showTargetsOnly) {
-      filtered = filtered.filter(player => isPlayerTargeted(player.id));
+      filtered = filtered.filter(player => targetedSet.has(player.id));
     }
 
     return filtered.sort((a, b) => {
       if (a.isDrafted && !b.isDrafted) return 1;
       if (!a.isDrafted && b.isDrafted) return -1;
-      const aTargeted = isPlayerTargeted(a.id);
-      const bTargeted = isPlayerTargeted(b.id);
+      const aTargeted = targetedSet.has(a.id);
+      const bTargeted = targetedSet.has(b.id);
       if (aTargeted && !bTargeted) return -1;
       if (!aTargeted && bTargeted) return 1;
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
-  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showTargetsOnly, isPlayerTargeted]);
+  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showTargetsOnly, targetedSet]);
+
+  const totalPages = Math.ceil(filteredPlayers.length / ROWS_PER_PAGE);
+  const paginatedPlayers = useMemo(() => {
+    const start = currentPage * ROWS_PER_PAGE;
+    return filteredPlayers.slice(start, start + ROWS_PER_PAGE);
+  }, [filteredPlayers, currentPage]);
+  
+  const handlePageChange = useCallback((delta: number) => {
+    setCurrentPage(prev => Math.max(0, Math.min(totalPages - 1, prev + delta)));
+  }, [totalPages]);
+
+  useEffect(() => {
+    if (currentPage >= totalPages && totalPages > 0) {
+      setCurrentPage(totalPages - 1);
+    }
+  }, [totalPages, currentPage]);
 
   const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
     setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
@@ -178,12 +202,12 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredPlayers.map((player) => {
+              {paginatedPlayers.map((player) => {
                 const originalValue = player.originalValue;
                 const adjustedValue = player.adjustedValue || originalValue;
                 const delta = adjustedValue - originalValue;
                 const deltaPercent = originalValue > 0 ? (delta / originalValue) * 100 : 0;
-                const targeted = isPlayerTargeted(player.id);
+                const targeted = isTargeted(player.id);
 
                 return (
                   <TableRow
@@ -321,6 +345,41 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
             </TableBody>
           </Table>
         </div>
+        
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between px-4 py-3 border-t border-card-border bg-muted/30">
+            <div className="text-sm text-muted-foreground">
+              Showing {currentPage * ROWS_PER_PAGE + 1}-{Math.min((currentPage + 1) * ROWS_PER_PAGE, filteredPlayers.length)} of {filteredPlayers.length} players
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(-1)}
+                disabled={currentPage === 0}
+                className="hover-elevate"
+                data-testid="button-prev-page"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Prev
+              </Button>
+              <span className="text-sm font-mono px-2">
+                {currentPage + 1} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handlePageChange(1)}
+                disabled={currentPage >= totalPages - 1}
+                className="hover-elevate"
+                data-testid="button-next-page"
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

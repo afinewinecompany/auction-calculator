@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
 import { useAppContext } from '@/lib/app-context';
 import { DraftMetrics } from '@/components/draft-metrics';
@@ -24,7 +24,7 @@ export default function DraftRoom() {
 
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerValue | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-
+  
   useEffect(() => {
     if (!leagueSettings || playerValues.length === 0) {
       navigate('/');
@@ -40,42 +40,14 @@ export default function DraftRoom() {
         totalPlayersDrafted: 0,
       });
     }
-  }, [leagueSettings, playerValues, draftState, setDraftState, navigate]);
+  }, [leagueSettings, playerValues.length, draftState, setDraftState, navigate]);
 
-  const picksHash = useMemo(() => {
-    if (!draftState?.picks?.length) return '';
-    return draftState.picks.map(p => `${p.playerId}:${p.actualPrice}:${p.isMyBid}`).join(',');
+  const picksData = useMemo(() => {
+    if (!draftState?.picks) return { total: 0, myBidCount: 0, length: 0 };
+    const total = draftState.picks.reduce((acc, p) => acc + p.actualPrice, 0);
+    const myBidCount = draftState.picks.filter(p => p.isMyBid).length;
+    return { total, myBidCount, length: draftState.picks.length };
   }, [draftState?.picks]);
-
-  const playerValuesHash = useMemo(() => {
-    if (!playerValues.length) return '';
-    return playerValues.map(p => 
-      `${p.id}:${p.originalValue}:${p.adjustedValue ?? 0}:${p.isDrafted ? 1 : 0}`
-    ).join(',');
-  }, [playerValues]);
-
-  const leagueSettingsHash = useMemo(() => {
-    if (!leagueSettings) return '';
-    const posReqs = Object.entries(leagueSettings.positionRequirements || {})
-      .map(([k, v]) => `${k}:${v}`)
-      .join(',');
-    return `${leagueSettings.teamCount}:${leagueSettings.auctionBudget}:${leagueSettings.totalRosterSpots}:${posReqs}`;
-  }, [leagueSettings]);
-
-  const scoringFormatHash = useMemo(() => {
-    if (!scoringFormat) return '';
-    const { type } = scoringFormat;
-    
-    if (type === 'h2h-points') {
-      const hitPts = Object.entries(scoringFormat.hittingPoints).map(([k, v]) => `${k}:${v}`).join(',');
-      const pitchPts = Object.entries(scoringFormat.pitchingPoints).map(([k, v]) => `${k}:${v}`).join(',');
-      return `${type}::${hitPts}:${pitchPts}`;
-    } else {
-      const hitCats = scoringFormat.hittingCategories.join(',');
-      const pitchCats = scoringFormat.pitchingCategories.join(',');
-      return `${type}:${hitCats}:${pitchCats}::`;
-    }
-  }, [scoringFormat]);
 
   useEffect(() => {
     if (!draftState || !leagueSettings || playerValues.length === 0) return;
@@ -86,36 +58,42 @@ export default function DraftRoom() {
       leagueSettings
     );
     
-    const totalSpent = draftState.picks.reduce((sum, p) => sum + p.actualPrice, 0);
+    const totalSpent = picksData.total;
+    const currentPicksLength = picksData.length;
     
-    setDraftState(prev => {
-      if (!prev) return prev;
-      if (
-        prev.currentInflationRate === inflationRate &&
-        prev.totalBudgetSpent === totalSpent &&
-        prev.totalPlayersDrafted === prev.picks.length
-      ) {
-        return prev;
+    const needsDraftStateUpdate = 
+      draftState.currentInflationRate !== inflationRate ||
+      draftState.totalBudgetSpent !== totalSpent ||
+      draftState.totalPlayersDrafted !== currentPicksLength;
+    
+    if (needsDraftStateUpdate) {
+      setDraftState(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          currentInflationRate: inflationRate,
+          totalBudgetSpent: totalSpent,
+          totalPlayersDrafted: currentPicksLength,
+        };
+      });
+    }
+    
+    let hasChanges = false;
+    for (let i = 0; i < adjustedValues.length; i++) {
+      const newVal = adjustedValues[i];
+      const oldVal = playerValues[i];
+      if (!oldVal || 
+          newVal.adjustedValue !== oldVal.adjustedValue ||
+          newVal.isDrafted !== oldVal.isDrafted) {
+        hasChanges = true;
+        break;
       }
-      return {
-        ...prev,
-        currentInflationRate: inflationRate,
-        totalBudgetSpent: totalSpent,
-        totalPlayersDrafted: prev.picks.length,
-      };
-    });
-    
-    const hasChanges = adjustedValues.some((newVal, idx) => {
-      const oldVal = playerValues[idx];
-      return !oldVal || 
-             newVal.adjustedValue !== oldVal.adjustedValue ||
-             newVal.isDrafted !== oldVal.isDrafted;
-    });
+    }
     
     if (hasChanges) {
       setPlayerValues(adjustedValues);
     }
-  }, [picksHash, playerValuesHash, leagueSettingsHash, scoringFormatHash, setDraftState, setPlayerValues]);
+  }, [picksData, playerValues, leagueSettings, draftState, setDraftState, setPlayerValues]);
 
   const handlePlayerSelect = (player: PlayerValue) => {
     setSelectedPlayer(player);

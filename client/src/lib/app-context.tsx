@@ -212,10 +212,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setDraftState = useCallback((stateOrUpdater: DraftState | null | ((prev: DraftState | null) => DraftState | null)) => {
     setDraftStateState(prev => {
       const newState = typeof stateOrUpdater === 'function' ? stateOrUpdater(prev) : stateOrUpdater;
-      const normalizedState = newState ? normalizeDraftState(newState, myTeamNameRef.current) : null;
+      const normalizedState = newState ? normalizeDraftState(newState, myTeamNameRef.current) : undefined;
       
       if (!isClearingRef.current) {
-        const snapshot = buildStateSnapshot({ draftState: normalizedState || undefined });
+        const snapshot = buildStateSnapshot({ draftState: normalizedState });
         const toSave: ExtendedAppState = {};
         if (snapshot.leagueSettings) toSave.leagueSettings = snapshot.leagueSettings;
         if (snapshot.scoringFormat) toSave.scoringFormat = snapshot.scoringFormat;
@@ -228,7 +228,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
       }
       
-      return normalizedState;
+      return normalizedState ?? null;
     });
   }, [buildStateSnapshot]);
 
@@ -252,7 +252,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const updatedDraftState: DraftState = { ...draftState, picks: renamedPicks };
       const normalizedDraftState = normalizeDraftState(updatedDraftState, validName);
       
-      setDraftStateState(normalizedDraftState || null);
+      setDraftStateState(normalizedDraftState ?? null);
       
       const snapshot = buildStateSnapshot({ 
         draftState: normalizedDraftState,

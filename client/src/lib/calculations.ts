@@ -169,6 +169,11 @@ export function calculatePlayerValues(
   const pitchers = projections.filter(p => 
     p.positions.some(pos => isPitcherPos(pos))
   );
+  
+  console.log(`[Calculations] Total projections: ${projections.length}, Hitters: ${hitters.length}, Pitchers: ${pitchers.length}`);
+  if (pitchers.length === 0 && projections.length > 0) {
+    console.log('[Calculations] No pitchers found! Sample positions:', projections.slice(0, 5).map(p => ({ name: p.name, positions: p.positions })));
+  }
 
   const hitterReplacementLevel = calculateReplacementLevel(leagueSettings, 'hitter');
   const pitcherReplacementLevel = calculateReplacementLevel(leagueSettings, 'pitcher');
