@@ -72,22 +72,57 @@ export const playerValueSchema = z.object({
   rank: z.number(),
   positionRank: z.record(z.string(), z.number()).optional(),
   tier: z.number().optional(),
+  valueTier: z.enum(["elite", "star", "starter", "bench", "replacement"]).optional(),
   stats: z.record(z.string(), z.number()),
   isDrafted: z.boolean().default(false),
   draftPrice: z.number().optional(),
   draftedBy: z.string().optional(),
+  isDraftable: z.boolean().default(true),
+  assignedPosition: z.string().optional(),
+  var: z.number().optional(),
 });
 
 export type PlayerValue = z.infer<typeof playerValueSchema>;
 
+// Value Tier (for player classification)
+export const valueTierSchema = z.enum(["elite", "star", "starter", "bench", "replacement"]);
+export type ValueTier = z.infer<typeof valueTierSchema>;
+
+// Hitter/Pitcher Split Configuration
+export const splitMethodSchema = z.enum(["calculated", "manual", "standard"]);
+export const standardPresetSchema = z.enum(["balanced", "hitter_heavy", "pitcher_heavy"]);
+
+export const hitterPitcherSplitSchema = z.object({
+  method: splitMethodSchema.default("calculated"),
+  manualSplit: z.object({
+    hitters: z.number().min(0).max(100),
+    pitchers: z.number().min(0).max(100),
+  }).optional(),
+  standardPreset: standardPresetSchema.optional(),
+});
+
+export type HitterPitcherSplit = z.infer<typeof hitterPitcherSplitSchema>;
+
+// Replacement Level Configuration
+export const replacementLevelMethodSchema = z.enum(["lastDrafted", "firstUndrafted", "blended"]);
+export type ReplacementLevelMethod = z.infer<typeof replacementLevelMethodSchema>;
+
+// Standard Split Presets
+export const STANDARD_SPLITS = {
+  balanced: { hitters: 65, pitchers: 35 },
+  hitter_heavy: { hitters: 70, pitchers: 30 },
+  pitcher_heavy: { hitters: 60, pitchers: 40 },
+} as const;
+
 // Value Calculation Settings
 export const valueCalculationSettingsSchema = z.object({
-  method: z.enum(["sgp", "z-score", "points-above-replacement", "dollar-per-point"]),
-  replacementLevel: z.number().optional(),
-  autoReplacement: z.boolean().default(true),
+  method: z.enum(["sgp", "z-score", "points-above-replacement"]),
+  replacementLevelMethod: replacementLevelMethodSchema.default("lastDrafted"),
   applyPositionScarcity: z.boolean().default(false),
   positionScarcityWeights: z.record(z.string(), z.number()).optional(),
+  hitterPitcherSplit: hitterPitcherSplitSchema.default({ method: "calculated" }),
   hitterBudgetPercent: z.number().min(0).max(100).default(65),
+  showTiers: z.boolean().default(true),
 });
 
 export type ValueCalculationSettings = z.infer<typeof valueCalculationSettingsSchema>;

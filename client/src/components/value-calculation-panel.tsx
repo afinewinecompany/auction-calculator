@@ -7,9 +7,12 @@ import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Calculator, Check, ChevronDown, ChevronRight, Sparkles, RotateCcw } from 'lucide-react';
-import type { ValueCalculationSettings } from '@shared/schema';
+import { Calculator, Check, ChevronDown, ChevronRight, Sparkles, Info } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { ValueCalculationSettings, ReplacementLevelMethod } from '@shared/schema';
+import { STANDARD_SPLITS } from '@shared/schema';
 
 interface ValueCalculationPanelProps {
   onComplete: () => void;
@@ -38,25 +41,27 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
   const [settings, setSettings] = useState<ValueCalculationSettings>(
     valueCalculationSettings || {
       method: 'z-score',
-      autoReplacement: true,
+      replacementLevelMethod: 'lastDrafted',
       applyPositionScarcity: false,
+      hitterPitcherSplit: { method: 'calculated' },
       hitterBudgetPercent: 65,
+      showTiers: true,
     }
   );
 
   const [lastAppliedRecommendation, setLastAppliedRecommendation] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!valueCalculationSettings && 
-        recommendedSplit.hitterPercent !== 65 && 
-        lastAppliedRecommendation !== recommendedSplit.hitterPercent) {
+    if (!valueCalculationSettings &&
+      recommendedSplit.hitterPercent !== 65 &&
+      lastAppliedRecommendation !== recommendedSplit.hitterPercent) {
       setSettings(prev => ({ ...prev, hitterBudgetPercent: recommendedSplit.hitterPercent }));
       setLastAppliedRecommendation(recommendedSplit.hitterPercent);
     }
   }, [recommendedSplit.hitterPercent, valueCalculationSettings, lastAppliedRecommendation]);
 
   const [isCalculating, setIsCalculating] = useState(false);
-  
+
   const isUsingRecommended = settings.hitterBudgetPercent === recommendedSplit.hitterPercent;
 
   const handleCalculate = () => {
@@ -72,9 +77,9 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
         scoringFormat,
         settings
       );
-      
+
       setPlayerValues(values);
-      
+
       requestAnimationFrame(() => {
         setIsCalculating(false);
         onComplete();
@@ -88,8 +93,40 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
   const getSummary = () => {
     if (!valueCalculationSettings) return null;
     const methodLabel = valueCalculationSettings.method === 'z-score' ? 'z-Score' :
-                        valueCalculationSettings.method === 'sgp' ? 'SGP' : 'PAR';
+      valueCalculationSettings.method === 'sgp' ? 'SGP' : 'PAR';
     return `${methodLabel}, ${valueCalculationSettings.hitterBudgetPercent}/${100 - valueCalculationSettings.hitterBudgetPercent} split`;
+  };
+
+  const handleSplitMethodChange = (method: string) => {
+    if (method === 'calculated') {
+      setSettings(prev => ({
+        ...prev,
+        hitterPitcherSplit: { method: 'calculated' },
+        hitterBudgetPercent: recommendedSplit.hitterPercent,
+      }));
+    } else if (method === 'standard') {
+      setSettings(prev => ({
+        ...prev,
+        hitterPitcherSplit: { method: 'standard', standardPreset: 'balanced' },
+        hitterBudgetPercent: STANDARD_SPLITS.balanced.hitters,
+      }));
+    } else {
+      setSettings(prev => ({
+        ...prev,
+        hitterPitcherSplit: {
+          method: 'manual',
+          manualSplit: { hitters: prev.hitterBudgetPercent, pitchers: 100 - prev.hitterBudgetPercent }
+        },
+      }));
+    }
+  };
+
+  const handlePresetChange = (preset: 'balanced' | 'hitter_heavy' | 'pitcher_heavy') => {
+    setSettings(prev => ({
+      ...prev,
+      hitterPitcherSplit: { method: 'standard', standardPreset: preset },
+      hitterBudgetPercent: STANDARD_SPLITS[preset].hitters,
+    }));
   };
 
   return (
@@ -157,10 +194,42 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
             </div>
 
             <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Label className="text-base font-semibold">Replacement Level</Label>
+                <Tooltip>
+                  <TooltipTrigger>
+                    <Info className="h-4 w-4 text-muted-foreground" />
+                  </TooltipTrigger>
+                  <TooltipContent className="max-w-xs">
+                    <p>Determines the baseline player for calculating value above replacement.</p>
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+              <Select
+                value={settings.replacementLevelMethod}
+                onValueChange={(value) => setSettings(prev => ({ ...prev, replacementLevelMethod: value as ReplacementLevelMethod }))}
+              >
+                <SelectTrigger className="w-full" data-testid="select-replacement-level">
+                  <SelectValue placeholder="Select replacement level method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="lastDrafted">Last Drafted (most common)</SelectItem>
+                  <SelectItem value="firstUndrafted">First Undrafted</SelectItem>
+                  <SelectItem value="blended">Blended (average of boundary players)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {settings.replacementLevelMethod === 'lastDrafted' && 'Uses the last player drafted at each position as the baseline.'}
+                {settings.replacementLevelMethod === 'firstUndrafted' && 'Uses the best undrafted player at each position as the baseline.'}
+                {settings.replacementLevelMethod === 'blended' && 'Averages the last few drafted and first few undrafted players.'}
+              </p>
+            </div>
+
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <Label htmlFor="scarcity-toggle" className="text-base font-semibold">Position Scarcity Adjustments</Label>
-                  <p className="text-xs text-muted-foreground mt-1">Apply value multipliers based on position availability</p>
+                  <p className="text-xs text-muted-foreground mt-1">Apply value multipliers based on position depth drop-off</p>
                 </div>
                 <Switch
                   id="scarcity-toggle"
@@ -172,48 +241,121 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
             </div>
 
             <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                  <Label className="text-base font-semibold">Hitter/Pitcher Budget Split</Label>
-                  <div className="flex items-center gap-3">
-                    {playerProjections.length > 0 && (
-                      <Button
-                        variant={isUsingRecommended ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => setSettings(prev => ({ ...prev, hitterBudgetPercent: recommendedSplit.hitterPercent }))}
-                        className={isUsingRecommended ? "bg-baseball-green" : "hover-elevate"}
-                        data-testid="button-use-recommended-split"
-                      >
-                        <Sparkles className="h-3 w-3 mr-1" />
-                        {isUsingRecommended ? 'Using Recommended' : `Use Recommended (${recommendedSplit.hitterPercent}%)`}
-                      </Button>
-                    )}
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label htmlFor="tiers-toggle" className="text-base font-semibold">Show Value Tiers</Label>
+                  <p className="text-xs text-muted-foreground mt-1">Display Elite, Star, Starter, Bench, Replacement tier labels</p>
+                </div>
+                <Switch
+                  id="tiers-toggle"
+                  checked={settings.showTiers}
+                  onCheckedChange={(checked) => setSettings(prev => ({ ...prev, showTiers: checked }))}
+                  data-testid="switch-show-tiers"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <Label className="text-base font-semibold">Hitter/Pitcher Budget Split</Label>
+
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant={settings.hitterPitcherSplit?.method === 'calculated' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleSplitMethodChange('calculated')}
+                  className={settings.hitterPitcherSplit?.method === 'calculated' ? 'bg-baseball-navy' : 'hover-elevate'}
+                  data-testid="button-split-calculated"
+                >
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  Calculated
+                </Button>
+                <Button
+                  variant={settings.hitterPitcherSplit?.method === 'standard' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleSplitMethodChange('standard')}
+                  className={settings.hitterPitcherSplit?.method === 'standard' ? 'bg-baseball-navy' : 'hover-elevate'}
+                  data-testid="button-split-standard"
+                >
+                  Standard Presets
+                </Button>
+                <Button
+                  variant={settings.hitterPitcherSplit?.method === 'manual' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => handleSplitMethodChange('manual')}
+                  className={settings.hitterPitcherSplit?.method === 'manual' ? 'bg-baseball-navy' : 'hover-elevate'}
+                  data-testid="button-split-manual"
+                >
+                  Manual
+                </Button>
+              </div>
+
+              {settings.hitterPitcherSplit?.method === 'standard' && (
+                <div className="flex gap-2 flex-wrap">
+                  <Button
+                    variant={settings.hitterPitcherSplit.standardPreset === 'balanced' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handlePresetChange('balanced')}
+                    className={settings.hitterPitcherSplit.standardPreset === 'balanced' ? 'bg-baseball-green' : 'hover-elevate'}
+                    data-testid="button-preset-balanced"
+                  >
+                    Balanced (65/35)
+                  </Button>
+                  <Button
+                    variant={settings.hitterPitcherSplit.standardPreset === 'hitter_heavy' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handlePresetChange('hitter_heavy')}
+                    className={settings.hitterPitcherSplit.standardPreset === 'hitter_heavy' ? 'bg-baseball-green' : 'hover-elevate'}
+                    data-testid="button-preset-hitter-heavy"
+                  >
+                    Hitter Heavy (70/30)
+                  </Button>
+                  <Button
+                    variant={settings.hitterPitcherSplit.standardPreset === 'pitcher_heavy' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => handlePresetChange('pitcher_heavy')}
+                    className={settings.hitterPitcherSplit.standardPreset === 'pitcher_heavy' ? 'bg-baseball-green' : 'hover-elevate'}
+                    data-testid="button-preset-pitcher-heavy"
+                  >
+                    Pitcher Heavy (60/40)
+                  </Button>
+                </div>
+              )}
+
+              {settings.hitterPitcherSplit?.method === 'manual' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Drag to adjust split</span>
                     <span className="text-sm font-mono font-semibold text-baseball-navy">
                       {settings.hitterBudgetPercent}% / {100 - settings.hitterBudgetPercent}%
                     </span>
                   </div>
+                  <Slider
+                    value={[settings.hitterBudgetPercent]}
+                    onValueChange={([value]) => setSettings(prev => ({
+                      ...prev,
+                      hitterBudgetPercent: value,
+                      hitterPitcherSplit: { method: 'manual', manualSplit: { hitters: value, pitchers: 100 - value } }
+                    }))}
+                    min={40}
+                    max={80}
+                    step={1}
+                    data-testid="slider-budget-split"
+                  />
                 </div>
-                {playerProjections.length > 0 && recommendedSplit.reason !== 'Default split' && (
-                  <p className="text-xs text-muted-foreground mb-3">{recommendedSplit.reason}</p>
-                )}
-                <Slider
-                  value={[settings.hitterBudgetPercent]}
-                  onValueChange={([value]) => setSettings(prev => ({ ...prev, hitterBudgetPercent: value }))}
-                  min={40}
-                  max={80}
-                  step={5}
-                  className="mb-3"
-                  data-testid="slider-budget-split"
-                />
-                <div className="flex justify-between text-sm">
-                  <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
-                    <p className="text-xs text-muted-foreground">Hitters</p>
-                    <p className="font-mono font-bold text-baseball-navy">${hitterBudget.toLocaleString()}</p>
-                  </div>
-                  <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
-                    <p className="text-xs text-muted-foreground">Pitchers</p>
-                    <p className="font-mono font-bold text-baseball-navy">${pitcherBudget.toLocaleString()}</p>
-                  </div>
+              )}
+
+              {settings.hitterPitcherSplit?.method === 'calculated' && playerProjections.length > 0 && (
+                <p className="text-xs text-muted-foreground">{recommendedSplit.reason}</p>
+              )}
+
+              <div className="flex justify-between text-sm pt-2">
+                <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
+                  <p className="text-xs text-muted-foreground">Hitters ({settings.hitterBudgetPercent}%)</p>
+                  <p className="font-mono font-bold text-baseball-navy">${hitterBudget.toLocaleString()}</p>
+                </div>
+                <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
+                  <p className="text-xs text-muted-foreground">Pitchers ({100 - settings.hitterBudgetPercent}%)</p>
+                  <p className="font-mono font-bold text-baseball-navy">${pitcherBudget.toLocaleString()}</p>
                 </div>
               </div>
             </div>

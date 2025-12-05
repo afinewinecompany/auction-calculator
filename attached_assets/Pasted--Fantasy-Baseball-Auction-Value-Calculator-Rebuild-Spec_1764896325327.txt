@@ -1,0 +1,419 @@
+# Fantasy Baseball Auction Value Calculator - Rebuild Specification
+
+## Project Context
+
+I have an existing fantasy baseball auction calculator app built with:
+- **Frontend**: React 18 + TypeScript, Vite 5, Tailwind CSS, Radix UI, React Query, React Hook Form + Zod
+- **Backend**: Node.js 20, Express 4, TypeScript, PostgreSQL 16 with Drizzle ORM
+
+The app takes player projections (raw stats) and calculates auction values. Users configure their league settings including:
+- League format (Roto, H2H Categories, H2H Points)
+- Number of teams
+- Roster size and position requirements
+- Scoring categories
+- Total auction budget
+
+## Core Problem to Solve
+
+The current value calculation spreads value across too many players, resulting in:
+1. Too many $1 players with minimal differentiation
+2. Star players potentially undervalued relative to replacement-level players
+3. Values that don't reflect actual auction dynamics where elite scarcity commands premiums
+
+## Requirements for New Value Calculation System
+
+### 1. Player Pool Scoping (Critical)
+
+Calculate values ONLY for players who will actually be drafted. The "draftable pool" must be computed dynamically:
+
+```
+Draftable Players = (Number of Teams) × (Roster Spots per Position)
+```
+
+For example, in a 12-team league with roster requirements:
+- C: 1 → Top 12 catchers get values
+- 1B: 1 → Top 12 first basemen get values
+- 2B: 1 → Top 12 second basemen get values
+- SS: 1 → Top 12 shortstops get values
+- 3B: 1 → Top 12 third basemen get values
+- OF: 3 → Top 36 outfielders get values
+- UTIL: 1 → Top 12 remaining hitters (after position fills)
+- SP: 5 → Top 60 starting pitchers get values
+- RP: 2 → Top 24 relief pitchers get values
+- Bench: 3 → Additional players based on optimal fills
+
+**Important considerations:**
+- Players with multi-position eligibility should be allocated to their most valuable position
+- UTIL spots filled by best available hitters not starting at a position
+- Bench spots require logic to determine optimal allocation (typically more hitters)
+
+### 2. Replacement Level Calculation
+
+For each position, establish a "replacement level" baseline:
+
+```typescript
+interface ReplacementLevel {
+  position: string;
+  lastDraftedPlayerIndex: number; // e.g., 12th catcher in 12-team league
+  replacementValue: number; // production of that player
+  replacementPlayerStats: ProjectedStats;
+}
+```
+
+**Replacement level definition options (let user choose):**
+- **Last Drafted**: The last player drafted at that position (most common)
+- **First Undrafted**: The best player NOT drafted at that position
+- **Blended**: Average of last 2-3 drafted + first 2-3 undrafted
+
+### 3. Value Above Replacement (VAR) Calculation
+
+#### For Roto/Categories Leagues:
+
+**Step 1: Calculate z-scores for each counting category**
+```typescript
+function calculateZScore(playerStat: number, mean: number, stdDev: number): number {
+  return (playerStat - mean) / stdDev;
+}
+```
+
+**Step 2: Handle rate stats properly (AVG, ERA, WHIP, etc.)**
+- Weight rate stats by playing time/innings
+- Use weighted standard deviation
+- For negative stats (ERA, WHIP), invert the z-score
+
+```typescript
+function calculateRateZScore(
+  playerRate: number,
+  playerVolume: number, // AB for AVG, IP for ERA
+  poolRates: { rate: number; volume: number }[]
+): number {
+  const weightedMean = calculateWeightedMean(poolRates);
+  const weightedStdDev = calculateWeightedStdDev(poolRates, weightedMean);
+  const volumeWeight = playerVolume / averageVolume;
+  return ((playerRate - weightedMean) / weightedStdDev) * volumeWeight;
+}
+```
+
+**Step 3: Sum z-scores and subtract replacement level**
+```typescript
+function calculateVAR(player: Player, replacementLevel: ReplacementLevel): number {
+  const playerTotalZ = sumZScores(player);
+  const replacementTotalZ = sumZScores(replacementLevel.replacementPlayerStats);
+  return playerTotalZ - replacementTotalZ;
+}
+```
+
+#### For Points Leagues:
+
+**Step 1: Calculate projected fantasy points**
+```typescript
+function calculateFantasyPoints(stats: ProjectedStats, scoring: PointsScoring): number {
+  let points = 0;
+  for (const [stat, value] of Object.entries(stats)) {
+    if (scoring[stat]) {
+      points += value * scoring[stat];
+    }
+  }
+  return points;
+}
+```
+
+**Step 2: Calculate Points Above Replacement**
+```typescript
+function calculatePAR(player: Player, replacementLevel: ReplacementLevel): number {
+  return player.projectedPoints - replacementLevel.projectedPoints;
+}
+```
+
+### 4. Dollar Value Conversion
+
+#### Calculate Total League Value to Distribute
+
+```typescript
+function calculateTotalLeagueValue(settings: LeagueSettings): number {
+  const totalBudget = settings.teamsCount * settings.auctionBudget;
+  const totalRosteredPlayers = settings.teamsCount * settings.rosterSize;
+  
+  // Reserve $1 for each roster spot (minimum bid)
+  const reservedDollars = totalRosteredPlayers * 1;
+  const distributableDollars = totalBudget - reservedDollars;
+  
+  return distributableDollars;
+}
+```
+
+#### Convert VAR to Dollars
+
+```typescript
+function convertVARtoDollars(
+  players: PlayerWithVAR[],
+  distributableDollars: number,
+  hitterPitcherSplit: { hitters: number; pitchers: number }
+): PlayerWithValue[] {
+  
+  // Separate hitters and pitchers
+  const hitters = players.filter(p => p.isHitter);
+  const pitchers = players.filter(p => !p.isHitter);
+  
+  // Calculate total positive VAR for each group
+  const totalHitterVAR = hitters
+    .filter(p => p.VAR > 0)
+    .reduce((sum, p) => sum + p.VAR, 0);
+  
+  const totalPitcherVAR = pitchers
+    .filter(p => p.VAR > 0)
+    .reduce((sum, p) => sum + p.VAR, 0);
+  
+  // Allocate dollars based on split
+  const hitterDollars = distributableDollars * hitterPitcherSplit.hitters;
+  const pitcherDollars = distributableDollars * hitterPitcherSplit.pitchers;
+  
+  // Calculate dollars per VAR unit
+  const hitterDollarPerVAR = hitterDollars / totalHitterVAR;
+  const pitcherDollarPerVAR = pitcherDollars / totalPitcherVAR;
+  
+  // Assign values
+  return players.map(player => ({
+    ...player,
+    auctionValue: Math.max(
+      1, // Minimum $1 for any draftable player
+      Math.round(
+        player.VAR * (player.isHitter ? hitterDollarPerVAR : pitcherDollarPerVAR)
+      ) + 1 // Add back the $1 base
+    )
+  }));
+}
+```
+
+### 5. Hitter/Pitcher Split Calculation
+
+Provide multiple methods for users:
+
+#### Method A: Z-Score Based (Current - Improve It)
+```typescript
+function calculateZScoreSplit(hitters: Player[], pitchers: Player[]): Split {
+  const hitterTotalZ = hitters.reduce((sum, h) => sum + Math.max(0, h.totalZ), 0);
+  const pitcherTotalZ = pitchers.reduce((sum, p) => sum + Math.max(0, p.totalZ), 0);
+  const total = hitterTotalZ + pitcherTotalZ;
+  
+  return {
+    hitters: hitterTotalZ / total,
+    pitchers: pitcherTotalZ / total
+  };
+}
+```
+
+#### Method B: Historical/Standard Splits
+```typescript
+const STANDARD_SPLITS = {
+  'balanced': { hitters: 0.65, pitchers: 0.35 },
+  'hitter_heavy': { hitters: 0.70, pitchers: 0.30 },
+  'pitcher_heavy': { hitters: 0.60, pitchers: 0.40 },
+};
+```
+
+#### Method C: SGP-Based (Standings Gain Points)
+Calculate based on how much each stat category historically moves standings.
+
+### 6. Position Scarcity Adjustments
+
+Apply multipliers based on position depth:
+
+```typescript
+interface PositionScarcity {
+  position: string;
+  depthScore: number; // How much production drops off
+  scarcityMultiplier: number;
+}
+
+function calculatePositionScarcity(
+  position: string,
+  players: Player[]
+): PositionScarcity {
+  const topPlayer = players[0];
+  const replacementPlayer = players[players.length - 1];
+  
+  // Calculate how much value drops from top to replacement
+  const dropOff = topPlayer.totalZ - replacementPlayer.totalZ;
+  
+  // Normalize across positions
+  // Positions with steeper drop-offs (like C, SS) get higher multipliers
+  return {
+    position,
+    depthScore: dropOff,
+    scarcityMultiplier: calculateMultiplier(dropOff, allPositionDropOffs)
+  };
+}
+```
+
+### 7. Value Tiers and Confidence Adjustments (Advanced)
+
+#### Tier System
+```typescript
+enum ValueTier {
+  ELITE = 'elite',           // Top 5% - highest confidence
+  STAR = 'star',             // Top 15% - high confidence  
+  STARTER = 'starter',       // Top 50% - moderate confidence
+  BENCH = 'bench',           // Top 80% - lower confidence
+  REPLACEMENT = 'replacement' // Bottom 20% - lowest confidence
+}
+
+function assignTier(player: Player, allPlayers: Player[]): ValueTier {
+  const percentile = calculatePercentile(player.VAR, allPlayers);
+  if (percentile >= 95) return ValueTier.ELITE;
+  if (percentile >= 85) return ValueTier.STAR;
+  if (percentile >= 50) return ValueTier.STARTER;
+  if (percentile >= 20) return ValueTier.BENCH;
+  return ValueTier.REPLACEMENT;
+}
+```
+
+#### Confidence Weighting (Optional Premium for Proven Players)
+```typescript
+interface ConfidenceFactors {
+  trackRecord: number;      // Years of MLB production
+  projectionAgreement: number; // How much projections systems agree
+  injuryRisk: number;       // Health concerns
+  ageDecline: number;       // Age-related regression
+}
+
+function applyConfidenceAdjustment(
+  baseValue: number,
+  tier: ValueTier,
+  confidence: ConfidenceFactors
+): number {
+  // Elite players with high confidence get a premium
+  // Replacement-level players with low confidence get discounted
+  const confidenceScore = calculateConfidenceScore(confidence);
+  const tierMultiplier = TIER_CONFIDENCE_WEIGHTS[tier];
+  
+  return baseValue * (1 + (confidenceScore - 0.5) * tierMultiplier);
+}
+```
+
+### 8. User Interface Updates
+
+#### Calculation Method Selection
+```tsx
+interface CalculationSettings {
+  method: 'zScore' | 'sgp' | 'par';
+  replacementLevel: 'lastDrafted' | 'firstUndrafted' | 'blended';
+  positionScarcity: boolean;
+  hitterPitcherSplit: {
+    method: 'calculated' | 'manual' | 'standard';
+    manualSplit?: { hitters: number; pitchers: number };
+    standardPreset?: 'balanced' | 'hitter_heavy' | 'pitcher_heavy';
+  };
+  confidenceAdjustments: boolean;
+  tiers: boolean;
+}
+```
+
+#### Display Improvements
+- Show replacement level player for each position
+- Display value tier badges
+- Show "draftable" vs "undraftable" distinction clearly
+- Provide value distribution chart (should show smooth curve, not cliff at $1)
+
+### 9. Validation and Testing
+
+#### Value Sanity Checks
+```typescript
+function validateValues(players: PlayerWithValue[], settings: LeagueSettings): ValidationResult {
+  const totalValue = players.reduce((sum, p) => sum + p.auctionValue, 0);
+  const expectedTotal = settings.teamsCount * settings.auctionBudget;
+  
+  const checks = {
+    totalMatchesBudget: Math.abs(totalValue - expectedTotal) < 10,
+    noNegativeValues: players.every(p => p.auctionValue >= 1),
+    topPlayersValued: players.slice(0, 10).every(p => p.auctionValue > 20),
+    reasonableDistribution: calculateGiniCoefficient(players) > 0.3,
+    positionsHaveValue: everyPositionHasValuedPlayers(players, settings)
+  };
+  
+  return { valid: Object.values(checks).every(Boolean), checks };
+}
+```
+
+#### Expected Outcomes
+- Top 10-15 players should have values $35+
+- Clear separation between tiers
+- Total values should equal total league budget
+- Each position should have its full complement valued
+- Replacement level players should be ~$1
+
+### 10. Data Flow Architecture
+
+```
+User League Settings
+        ↓
+Raw Projections (stats)
+        ↓
+Position Assignment (multi-eligibility handling)
+        ↓
+Draftable Pool Identification (based on roster requirements)
+        ↓
+Replacement Level Calculation (per position)
+        ↓
+VAR/PAR Calculation (stats → value above replacement)
+        ↓
+Position Scarcity Adjustment (optional multipliers)
+        ↓
+Hitter/Pitcher Split Application
+        ↓
+Dollar Conversion (VAR → auction dollars)
+        ↓
+Confidence/Tier Adjustments (optional)
+        ↓
+Validation & Rounding
+        ↓
+Final Auction Values
+```
+
+### 11. File Structure Suggestion
+
+```
+src/
+├── features/
+│   └── value-calculation/
+│       ├── types.ts                    # All TypeScript interfaces
+│       ├── constants.ts                # Standard splits, tier thresholds
+│       ├── hooks/
+│       │   ├── useValueCalculation.ts  # Main calculation hook
+│       │   └── useReplacementLevel.ts  # Replacement level logic
+│       ├── utils/
+│       │   ├── draftable-pool.ts       # Player pool scoping
+│       │   ├── replacement-level.ts    # Replacement calculations
+│       │   ├── z-score.ts              # Z-score calculations
+│       │   ├── sgp.ts                  # SGP calculations
+│       │   ├── dollar-conversion.ts    # VAR to dollars
+│       │   ├── position-scarcity.ts    # Scarcity multipliers
+│       │   └── validation.ts           # Value sanity checks
+│       ├── components/
+│       │   ├── CalculationMethodCard.tsx
+│       │   ├── ReplacementLevelSelect.tsx
+│       │   ├── HitterPitcherSplit.tsx
+│       │   ├── PositionScarcityToggle.tsx
+│       │   ├── ValueDistributionChart.tsx
+│       │   └── ValidationWarnings.tsx
+│       └── index.ts
+```
+
+## Implementation Priority
+
+1. **Phase 1 (Critical)**: Draftable pool scoping + replacement level
+2. **Phase 2 (Core)**: VAR calculation + dollar conversion
+3. **Phase 3 (Important)**: Position scarcity + hitter/pitcher split improvements
+4. **Phase 4 (Enhancement)**: Tiers + confidence adjustments
+5. **Phase 5 (Polish)**: Validation + distribution visualization
+
+## Questions for Implementation
+
+1. Should values be integers or allow decimals?
+2. How should ties at replacement level be handled?
+3. Should there be a "safety valve" that prevents any player from exceeding X% of budget?
+4. For multi-position players, should they get a flexibility premium?
+
+---
+
+This specification provides a complete rebuild of the value calculation system focused on producing realistic, usable auction values that properly differentiate elite players from replacement-level talent.
