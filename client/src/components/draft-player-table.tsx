@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
 import type { PlayerValue, DraftPick } from '@shared/schema';
 import type { PendingBid } from '@/lib/calculations';
 
@@ -27,6 +27,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const [showTargetsOnly, setShowTargetsOnly] = useState(false);
   const [hideDisabled, setHideDrafted] = useState(false);
   const [showWithCostOnly, setShowWithCostOnly] = useState(false);
+  const [showPendingBidsOnly, setShowPendingBidsOnly] = useState(false);
   const [quickDraftPrices, setQuickDraftPrices] = useState<Record<string, string>>({});
   const [quickDraftIsMyBid, setQuickDraftIsMyBid] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState(0);
@@ -58,6 +59,10 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
       filtered = filtered.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
     }
 
+    if (showPendingBidsOnly && pendingBids) {
+      filtered = filtered.filter(p => pendingBids.has(p.id));
+    }
+
     if (searchQuery) {
       const lowerQuery = searchQuery.toLowerCase();
       filtered = filtered.filter(player =>
@@ -84,7 +89,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
       if (!aTargeted && bTargeted) return 1;
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
-  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showTargetsOnly, targetedSet]);
+  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showPendingBidsOnly, pendingBids, showTargetsOnly, targetedSet]);
 
   const totalPages = Math.ceil(filteredPlayers.length / ROWS_PER_PAGE);
   const paginatedPlayers = useMemo(() => {
@@ -101,6 +106,12 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
       setCurrentPage(totalPages - 1);
     }
   }, [totalPages, currentPage]);
+
+  useEffect(() => {
+    if (showPendingBidsOnly && (!pendingBids || pendingBids.size === 0)) {
+      setShowPendingBidsOnly(false);
+    }
+  }, [showPendingBidsOnly, pendingBids]);
 
   const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
     setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
@@ -202,6 +213,18 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
             <DollarSign className="mr-2 h-4 w-4" />
             {showWithCostOnly ? 'Show All' : `$2+ (${playersWithCost.length})`}
           </Button>
+
+          {pendingBids && pendingBids.size > 0 && (
+            <Button
+              variant={showPendingBidsOnly ? "default" : "outline"}
+              onClick={() => setShowPendingBidsOnly(!showPendingBidsOnly)}
+              data-testid="button-toggle-pending-bids"
+              className={showPendingBidsOnly ? "" : "hover-elevate"}
+            >
+              <Lock className="mr-2 h-4 w-4" />
+              {showPendingBidsOnly ? 'Show All' : `Pending (${pendingBids.size})`}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -279,8 +302,17 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
                     <TableCell className="font-mono text-muted-foreground">
                       ${originalValue}
                     </TableCell>
-                    <TableCell className="font-mono font-bold text-baseball-navy text-lg">
-                      {player.isDrafted ? '—' : `$${adjustedValue}`}
+                    <TableCell className="font-mono font-bold text-lg">
+                      {player.isDrafted ? (
+                        <span className="text-muted-foreground">—</span>
+                      ) : player.hasPendingBid ? (
+                        <div className="flex items-center gap-1.5">
+                          <Lock className="h-3.5 w-3.5 text-amber-600" />
+                          <span className="text-amber-700">${adjustedValue}</span>
+                        </div>
+                      ) : (
+                        <span className="text-baseball-navy">${adjustedValue}</span>
+                      )}
                     </TableCell>
                     <TableCell>
                       {!player.isDrafted && delta !== 0 && (

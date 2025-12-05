@@ -745,24 +745,33 @@ export function calculateInflation(
   const remainingBudget = totalBudget - totalSpent;
 
   const draftedPlayerIds = new Set(draftPicks.map(p => p.playerId));
-  const pendingPlayerIds = new Set(pendingBids.map(b => b.playerId));
+  const pendingBidsMap = new Map(pendingBids.map(b => [b.playerId, b]));
   
   const undraftedPlayers = playerValues.filter(p => 
     !draftedPlayerIds.has(p.id) && 
-    !pendingPlayerIds.has(p.id) && 
+    !pendingBidsMap.has(p.id) && 
     !p.isDrafted
   );
 
   const remainingValue = undraftedPlayers.reduce((sum, p) => sum + p.originalValue, 0);
 
   if (remainingValue === 0 || remainingBudget <= 0) {
-    return {
-      inflationRate: 0,
-      adjustedValues: playerValues.map(p => ({
+    const adjustedValues = playerValues.map(p => {
+      const pendingBid = pendingBidsMap.get(p.id);
+      if (pendingBid) {
+        return {
+          ...p,
+          adjustedValue: pendingBid.price,
+          hasPendingBid: true,
+          pendingBidIsMyBid: pendingBid.isMyBid,
+        };
+      }
+      return {
         ...p,
         adjustedValue: p.originalValue,
-      }))
-    };
+      };
+    });
+    return { inflationRate: 0, adjustedValues };
   }
 
   const inflationRate = (remainingBudget / remainingValue) - 1;
@@ -776,6 +785,18 @@ export function calculateInflation(
         draftPrice: draftPick?.actualPrice || player.draftPrice,
         draftedBy: draftPick?.draftedBy || player.draftedBy,
         adjustedValue: player.originalValue,
+        hasPendingBid: false,
+      };
+    }
+
+    const pendingBid = pendingBidsMap.get(player.id);
+    if (pendingBid) {
+      return {
+        ...player,
+        isDrafted: false,
+        adjustedValue: pendingBid.price,
+        hasPendingBid: true,
+        pendingBidIsMyBid: pendingBid.isMyBid,
       };
     }
 
@@ -783,6 +804,7 @@ export function calculateInflation(
       ...player,
       isDrafted: false,
       adjustedValue: Math.max(1, Math.round(player.originalValue * (1 + inflationRate))),
+      hasPendingBid: false,
     };
   });
 

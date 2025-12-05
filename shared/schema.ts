@@ -80,6 +80,8 @@ export const playerValueSchema = z.object({
   isDraftable: z.boolean().default(true),
   assignedPosition: z.string().optional(),
   var: z.number().optional(),
+  hasPendingBid: z.boolean().optional(),
+  pendingBidIsMyBid: z.boolean().optional(),
 });
 
 export type PlayerValue = z.infer<typeof playerValueSchema>;
