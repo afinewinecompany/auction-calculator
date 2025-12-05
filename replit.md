@@ -55,6 +55,13 @@ Preferred communication style: Simple, everyday language.
 - When Draft button is clicked, the pending bid is cleared and the pick is confirmed
 - Inflation formula: remainingBudget = totalBudget - confirmedSpent - pendingSpent
 
+**Selective Inflation (Locked Prices):**
+- Once a pending bid is entered for a player, that player's price is "locked" at the entered amount
+- Locked players display a lock icon with amber-colored price in the ADJ $ column
+- Inflation ONLY affects players WITHOUT pending bids - locked prices stay fixed
+- The "Pending (N)" filter button shows only players with entered prices
+- Filter auto-resets when all pending bids are cleared or drafted
+
 **Roster-Based Metrics:**
 - "Roster Spots Left" shows: (teamCount × totalRosterSpots) - playersDrafted - pendingBidsCount
 - "Avg $/Player" uses roster spots remaining as denominator instead of undrafted player count
