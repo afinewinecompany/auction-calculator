@@ -709,7 +709,10 @@ export function calculatePlayerValues(
     };
   });
 
-  const sortedValues = playerValues
+  const draftableValues = playerValues.filter(p => p.isDraftable);
+  const nonDraftableValues = playerValues.filter(p => !p.isDraftable);
+
+  const sortedDraftables = draftableValues
     .sort((a, b) => b.originalValue - a.originalValue)
     .map((player, index) => ({
       ...player,
@@ -717,7 +720,15 @@ export function calculatePlayerValues(
       tier: Math.floor(index / 20) + 1,
     }));
 
-  const totalAssignedValue = sortedValues.reduce((sum, p) => sum + p.originalValue, 0);
+  const sortedNonDraftables = nonDraftableValues.map(player => ({
+    ...player,
+    rank: 0,
+    tier: 0,
+  }));
+
+  const sortedValues = [...sortedDraftables, ...sortedNonDraftables];
+
+  const totalAssignedValue = sortedDraftables.reduce((sum, p) => sum + p.originalValue, 0);
   console.log(`[Calculations] Generated ${sortedValues.length} player values. ` +
     `Draftable: ${draftablePlayers.length} (${hitterCount} hitters, ${pitcherCount} pitchers). ` +
     `Total budget: $${totalBudget}, Assigned: $${totalAssignedValue}. ` +
