@@ -726,17 +726,32 @@ export function calculatePlayerValues(
   return sortedValues;
 }
 
+export interface PendingBid {
+  playerId: string;
+  price: number;
+  isMyBid: boolean;
+}
+
 export function calculateInflation(
   playerValues: PlayerValue[],
   draftPicks: DraftPick[],
-  leagueSettings: LeagueSettings
+  leagueSettings: LeagueSettings,
+  pendingBids: PendingBid[] = []
 ): { inflationRate: number; adjustedValues: PlayerValue[] } {
   const totalBudget = leagueSettings.teamCount * leagueSettings.auctionBudget;
-  const totalSpent = draftPicks.reduce((sum, pick) => sum + pick.actualPrice, 0);
+  const confirmedSpent = draftPicks.reduce((sum, pick) => sum + pick.actualPrice, 0);
+  const pendingSpent = pendingBids.reduce((sum, bid) => sum + bid.price, 0);
+  const totalSpent = confirmedSpent + pendingSpent;
   const remainingBudget = totalBudget - totalSpent;
 
   const draftedPlayerIds = new Set(draftPicks.map(p => p.playerId));
-  const undraftedPlayers = playerValues.filter(p => !draftedPlayerIds.has(p.id) && !p.isDrafted);
+  const pendingPlayerIds = new Set(pendingBids.map(b => b.playerId));
+  
+  const undraftedPlayers = playerValues.filter(p => 
+    !draftedPlayerIds.has(p.id) && 
+    !pendingPlayerIds.has(p.id) && 
+    !p.isDrafted
+  );
 
   const remainingValue = undraftedPlayers.reduce((sum, p) => sum + p.originalValue, 0);
 

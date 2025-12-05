@@ -8,7 +8,7 @@ import { DraftLog } from '@/components/draft-log';
 import { PositionalNeedsTracker } from '@/components/positional-needs-tracker';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
-import { calculateInflation } from '@/lib/calculations';
+import { calculateInflation, type PendingBid } from '@/lib/calculations';
 import type { PlayerValue, DraftPick } from '@shared/schema';
 
 export default function DraftRoom() {
@@ -24,6 +24,7 @@ export default function DraftRoom() {
 
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerValue | null>(null);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [pendingBids, setPendingBids] = useState<Map<string, PendingBid>>(new Map());
   
   useEffect(() => {
     if (!leagueSettings || playerValues.length === 0) {
@@ -49,13 +50,17 @@ export default function DraftRoom() {
     return { total, myBidCount, length: draftState.picks.length };
   }, [draftState?.picks]);
 
+  const pendingBidsArray = useMemo(() => Array.from(pendingBids.values()), [pendingBids]);
+  const pendingBidsTotal = useMemo(() => pendingBidsArray.reduce((sum, b) => sum + b.price, 0), [pendingBidsArray]);
+
   useEffect(() => {
     if (!draftState || !leagueSettings || playerValues.length === 0) return;
     
     const { inflationRate, adjustedValues } = calculateInflation(
       playerValues,
       draftState.picks,
-      leagueSettings
+      leagueSettings,
+      pendingBidsArray
     );
     
     const totalSpent = picksData.total;
@@ -93,12 +98,24 @@ export default function DraftRoom() {
     if (hasChanges) {
       setPlayerValues(adjustedValues);
     }
-  }, [picksData, playerValues, leagueSettings, draftState, setDraftState, setPlayerValues]);
+  }, [picksData, pendingBidsArray, playerValues, leagueSettings, draftState, setDraftState, setPlayerValues]);
 
   const handlePlayerSelect = (player: PlayerValue) => {
     setSelectedPlayer(player);
     setIsDialogOpen(true);
   };
+
+  const handlePendingBidChange = useCallback((playerId: string, price: number | null, isMyBid: boolean) => {
+    setPendingBids(prev => {
+      const next = new Map(prev);
+      if (price === null || price < 1) {
+        next.delete(playerId);
+      } else {
+        next.set(playerId, { playerId, price, isMyBid });
+      }
+      return next;
+    });
+  }, []);
 
   const handleDraftConfirm = useCallback((playerId: string, actualPrice: number, isMyBid: boolean) => {
     const player = playerValues.find(p => p.id === playerId);
@@ -115,6 +132,12 @@ export default function DraftRoom() {
       pickNumber: 0,
       timestamp: Date.now(),
     };
+
+    setPendingBids(prev => {
+      const next = new Map(prev);
+      next.delete(playerId);
+      return next;
+    });
 
     setDraftState(prev => {
       if (!prev) return prev;
@@ -176,6 +199,8 @@ export default function DraftRoom() {
         leagueSettings={leagueSettings}
         draftState={draftState}
         playerValues={playerValues}
+        pendingBidsTotal={pendingBidsTotal}
+        pendingBidsCount={pendingBids.size}
       />
 
       <div className="max-w-7xl mx-auto px-6 py-8">
@@ -211,6 +236,8 @@ export default function DraftRoom() {
               players={playerValues}
               onPlayerSelect={handlePlayerSelect}
               onQuickDraft={handleDraftConfirm}
+              onPendingBidChange={handlePendingBidChange}
+              pendingBids={pendingBids}
             />
           </div>
 

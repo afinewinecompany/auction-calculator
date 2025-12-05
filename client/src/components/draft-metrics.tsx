@@ -4,16 +4,18 @@ interface DraftMetricsProps {
   leagueSettings: LeagueSettings;
   draftState: DraftState;
   playerValues: PlayerValue[];
+  pendingBidsTotal?: number;
+  pendingBidsCount?: number;
 }
 
-export function DraftMetrics({ leagueSettings, draftState, playerValues }: DraftMetricsProps) {
+export function DraftMetrics({ leagueSettings, draftState, playerValues, pendingBidsTotal = 0, pendingBidsCount = 0 }: DraftMetricsProps) {
   const totalBudget = leagueSettings.teamCount * leagueSettings.auctionBudget;
-  const budgetRemaining = totalBudget - draftState.totalBudgetSpent;
-  const playersLeft = draftState.totalPlayersAvailable - draftState.totalPlayersDrafted;
-  const avgCostPerPlayer = playersLeft > 0 ? budgetRemaining / playersLeft : 0;
+  const totalPlayersToDraft = leagueSettings.teamCount * leagueSettings.totalRosterSpots;
+  const budgetRemaining = totalBudget - draftState.totalBudgetSpent - pendingBidsTotal;
+  const playersLeftToDraft = totalPlayersToDraft - draftState.totalPlayersDrafted - pendingBidsCount;
+  const avgCostPerPlayer = playersLeftToDraft > 0 ? budgetRemaining / playersLeftToDraft : 0;
   
   const undraftedPlayers = playerValues.filter(p => !p.isDrafted);
-  const totalOriginalValue = undraftedPlayers.reduce((sum, p) => sum + p.originalValue, 0);
   const avgAdjustedValue = undraftedPlayers.length > 0
     ? undraftedPlayers.reduce((sum, p) => sum + (p.adjustedValue || p.originalValue), 0) / undraftedPlayers.length
     : 0;
@@ -39,13 +41,13 @@ export function DraftMetrics({ leagueSettings, draftState, playerValues }: Draft
           </div>
 
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">PLAYERS LEFT</p>
+            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">ROSTER SPOTS LEFT</p>
             <div className="flex items-baseline gap-2">
               <p className="font-mono text-3xl font-bold" data-testid="text-players-left">
-                {playersLeft}
+                {playersLeftToDraft}
               </p>
               <p className="text-sm text-baseball-cream/60 font-mono">
-                of {draftState.totalPlayersAvailable}
+                of {totalPlayersToDraft}
               </p>
             </div>
           </div>

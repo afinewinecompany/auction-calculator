@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { PlayerValue, DraftPick } from '@shared/schema';
+import type { PendingBid } from '@/lib/calculations';
 
 const ROWS_PER_PAGE = 50;
 
@@ -15,9 +16,11 @@ interface DraftPlayerTableProps {
   players: PlayerValue[];
   onPlayerSelect: (player: PlayerValue) => void;
   onQuickDraft?: (playerId: string, actualPrice: number, isMyBid: boolean) => void;
+  onPendingBidChange?: (playerId: string, price: number | null, isMyBid: boolean) => void;
+  pendingBids?: Map<string, PendingBid>;
 }
 
-export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: DraftPlayerTableProps) {
+export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPendingBidChange, pendingBids }: DraftPlayerTableProps) {
   const { toggleTargetPlayer, isPlayerTargeted, targetedPlayerIds } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
   const [positionFilter, setPositionFilter] = useState<string>('all');
@@ -101,7 +104,25 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
 
   const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
     setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
-  }, []);
+    
+    if (onPendingBidChange) {
+      const price = parseInt(value, 10);
+      const isMyBid = quickDraftIsMyBid[playerId] ?? false;
+      onPendingBidChange(playerId, isNaN(price) || price < 1 ? null : price, isMyBid);
+    }
+  }, [onPendingBidChange, quickDraftIsMyBid]);
+  
+  const handleQuickDraftMyBidChange = useCallback((playerId: string, isMyBid: boolean) => {
+    setQuickDraftIsMyBid(prev => ({ ...prev, [playerId]: isMyBid }));
+    
+    if (onPendingBidChange) {
+      const priceStr = quickDraftPrices[playerId] ?? '';
+      const price = parseInt(priceStr, 10);
+      if (!isNaN(price) && price >= 1) {
+        onPendingBidChange(playerId, price, isMyBid);
+      }
+    }
+  }, [onPendingBidChange, quickDraftPrices]);
 
   const handleQuickDraftSubmit = useCallback((player: PlayerValue) => {
     if (!onQuickDraft) return;
@@ -280,9 +301,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft }: Draf
                               <Checkbox
                                 id={`my-bid-${player.id}`}
                                 checked={quickDraftIsMyBid[player.id] ?? false}
-                                onCheckedChange={(checked) => 
-                                  setQuickDraftIsMyBid(prev => ({ ...prev, [player.id]: !!checked }))
-                                }
+                                onCheckedChange={(checked) => handleQuickDraftMyBidChange(player.id, !!checked)}
                                 data-testid={`checkbox-quick-my-bid-${player.id}`}
                                 data-quick-draft
                               />
