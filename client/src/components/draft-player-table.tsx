@@ -113,6 +113,17 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
     }
   }, [showPendingBidsOnly, pendingBids]);
 
+  useEffect(() => {
+    if (!pendingBids) return;
+    
+    pendingBids.forEach((bid, playerId) => {
+      if (quickDraftPrices[playerId] === undefined) {
+        setQuickDraftPrices(prev => ({ ...prev, [playerId]: String(bid.price) }));
+        setQuickDraftIsMyBid(prev => ({ ...prev, [playerId]: bid.isMyBid }));
+      }
+    });
+  }, [pendingBids]);
+
   const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
     setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
   }, []);

@@ -178,6 +178,20 @@ export default function DraftRoom() {
   const handleDeletePick = useCallback((pickId: string) => {
     setDraftState(prev => {
       if (!prev) return prev;
+      
+      const pickToDelete = prev.picks.find(p => p.id === pickId);
+      if (pickToDelete) {
+        setPendingBids(currentBids => {
+          const newBids = new Map(currentBids);
+          newBids.set(pickToDelete.playerId, {
+            playerId: pickToDelete.playerId,
+            price: pickToDelete.actualPrice,
+            isMyBid: pickToDelete.isMyBid ?? false,
+          });
+          return newBids;
+        });
+      }
+      
       const filteredPicks = prev.picks.filter(p => p.id !== pickId);
       return {
         ...prev,
