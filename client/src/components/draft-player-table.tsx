@@ -25,7 +25,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const [searchQuery, setSearchQuery] = useState('');
   const [positionFilter, setPositionFilter] = useState<string>('all');
   const [showTargetsOnly, setShowTargetsOnly] = useState(false);
-  const [hideDisabled, setHideDrafted] = useState(false);
+  const [hideDrafted, setHideDrafted] = useState(true);
   const [showWithCostOnly, setShowWithCostOnly] = useState(false);
   const [showPendingBidsOnly, setShowPendingBidsOnly] = useState(false);
   const [quickDraftPrices, setQuickDraftPrices] = useState<Record<string, string>>({});
@@ -51,7 +51,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const filteredPlayers = useMemo(() => {
     let filtered = players;
 
-    if (hideDisabled) {
+    if (hideDrafted) {
       filtered = filtered.filter(p => !p.isDrafted);
     }
 
@@ -89,7 +89,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
       if (!aTargeted && bTargeted) return 1;
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
-  }, [players, searchQuery, positionFilter, hideDisabled, showWithCostOnly, showPendingBidsOnly, pendingBids, showTargetsOnly, targetedSet]);
+  }, [players, searchQuery, positionFilter, hideDrafted, showWithCostOnly, showPendingBidsOnly, pendingBids, showTargetsOnly, targetedSet]);
 
   const totalPages = Math.ceil(filteredPlayers.length / ROWS_PER_PAGE);
   const paginatedPlayers = useMemo(() => {
@@ -196,12 +196,12 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
           </Select>
 
           <Button
-            variant={hideDisabled ? "default" : "outline"}
-            onClick={() => setHideDrafted(!hideDisabled)}
+            variant={hideDrafted ? "default" : "outline"}
+            onClick={() => setHideDrafted(!hideDrafted)}
             data-testid="button-toggle-drafted"
-            className={hideDisabled ? "" : "hover-elevate"}
+            className={hideDrafted ? "" : "hover-elevate"}
           >
-            {hideDisabled ? 'Show All' : 'Hide Drafted'}
+            {hideDrafted ? 'Show Drafted' : 'Hide Drafted'}
           </Button>
 
           <Button
