@@ -115,25 +115,28 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
 
   const handleQuickDraftPrice = useCallback((playerId: string, value: string) => {
     setQuickDraftPrices(prev => ({ ...prev, [playerId]: value }));
-    
+  }, []);
+
+  const handleQuickDraftPriceBlur = useCallback((playerId: string) => {
     if (onPendingBidChange) {
+      const value = quickDraftPrices[playerId] ?? '';
       const price = parseInt(value, 10);
       const isMyBid = quickDraftIsMyBid[playerId] ?? false;
       onPendingBidChange(playerId, isNaN(price) || price < 1 ? null : price, isMyBid);
     }
-  }, [onPendingBidChange, quickDraftIsMyBid]);
+  }, [onPendingBidChange, quickDraftPrices, quickDraftIsMyBid]);
   
   const handleQuickDraftMyBidChange = useCallback((playerId: string, isMyBid: boolean) => {
     setQuickDraftIsMyBid(prev => ({ ...prev, [playerId]: isMyBid }));
     
-    if (onPendingBidChange) {
+    if (onPendingBidChange && pendingBids?.has(playerId)) {
       const priceStr = quickDraftPrices[playerId] ?? '';
       const price = parseInt(priceStr, 10);
       if (!isNaN(price) && price >= 1) {
         onPendingBidChange(playerId, price, isMyBid);
       }
     }
-  }, [onPendingBidChange, quickDraftPrices]);
+  }, [onPendingBidChange, quickDraftPrices, pendingBids]);
 
   const handleQuickDraftSubmit = useCallback((player: PlayerValue) => {
     if (!onQuickDraft) return;
@@ -352,6 +355,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
                                 min="1"
                                 value={quickDraftPrices[player.id] ?? ''}
                                 onChange={(e) => handleQuickDraftPrice(player.id, e.target.value)}
+                                onBlur={() => handleQuickDraftPriceBlur(player.id)}
                                 onKeyDown={(e) => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault();
