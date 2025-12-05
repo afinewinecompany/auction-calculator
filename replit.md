@@ -48,13 +48,43 @@ Preferred communication style: Simple, everyday language.
 4. Value Calculation - Choose calculation method (Z-Score or SGP) with configurable parameters
 5. Draft Room - Live draft tracking with real-time inflation calculations
 
-**Calculation Engine:**
-- Z-Score methodology for standardizing player values across categories
-- SGP (Standings Gain Points) method for calculating marginal value
-- Replacement level player calculations based on league roster requirements
-- Dynamic inflation tracking that recalculates all player values after each pick
-- Positional scarcity adjustments
-- Configurable hitter/pitcher budget split
+**Calculation Engine (v2.0):**
+The rebuilt calculation engine implements per-position value analysis:
+
+*Draftable Pool Building:*
+- Allocates players to positions respecting league roster requirements
+- Handles multi-eligibility (MI = 2B/SS, CI = 1B/3B, UTIL = any hitter, P = any pitcher)
+- Players assigned to their optimal position based on Z-score ranking
+- BENCH slots included in allocation for remaining best-available players
+
+*Per-Position Replacement Level:*
+- Three methods: Last Drafted (most generous), First Undrafted (most conservative), Blended (average of 2 above + 2 below cutoff)
+- Replacement level calculated per position (C, 1B, 2B, SS, 3B, OF, MI, CI, UTIL, SP, RP, P, BENCH)
+- Tracks replacement player name for transparency
+
+*VAR (Value Above Replacement):*
+- Calculated as player's Z-score minus their position's replacement level Z-score
+- Negative VAR clamped to 0 (replacement-level or worse players)
+
+*Dollar Conversion:*
+- Reserves $1 per roster spot (minimum viable bid)
+- Distributable budget = (teams × budget) - (teams × roster spots)
+- Hitter/Pitcher split with three modes:
+  - Calculated: Based on proportion of total positive VAR
+  - Standard Presets: Balanced (65/35), Hitter Heavy (70/30), Pitcher Heavy (60/40)
+  - Manual: Custom slider control
+
+*Position Scarcity:*
+- Scarcity multiplier based on drop-off from top to replacement level
+- Positions with steeper drop-offs (C, SS) get higher multipliers
+- Normalized so average multiplier = 1.0
+
+*Value Tiers:*
+- ELITE: Top 5% of positive VAR
+- STAR: 70th-95th percentile
+- STARTER: 30th-70th percentile
+- BENCH: 5th-30th percentile
+- REPLACEMENT: Bottom 5% or non-draftable
 
 ### Data Persistence
 
