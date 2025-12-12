@@ -189,23 +189,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...pitcherResult.projections,
         ];
 
-        setPlayerProjectionsState(allProjections);
-
         // Use the more recent timestamp
         const batterTime = new Date(batterResult.lastUpdated).getTime();
         const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
         const latestTimestamp = batterTime > pitcherTime
           ? batterResult.lastUpdated
           : pitcherResult.lastUpdated;
-        setProjectionsLastUpdated(latestTimestamp);
-        setProjectionSourceState('api');
 
-        // Save to localStorage (including projectionSource)
-        const stored = localStorage.getItem(STORAGE_KEY);
-        const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
-        existingState.playerProjections = allProjections;
-        existingState.projectionSource = 'api';
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+        // Defer state updates and localStorage write to prevent UI freeze with large datasets
+        setTimeout(() => {
+          setPlayerProjectionsState(allProjections);
+          setProjectionsLastUpdated(latestTimestamp);
+          setProjectionSourceState('api');
+
+          // Save to localStorage (including projectionSource)
+          const stored = localStorage.getItem(STORAGE_KEY);
+          const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+          existingState.playerProjections = allProjections;
+          existingState.projectionSource = 'api';
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+        }, 0);
       } catch {
         setProjectionsError('Unable to load latest projections');
         // Don't crash - user can still upload CSV
@@ -417,8 +420,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const batterResult = await fetchBatterProjections(systemToUse);
 
         allProjections = batterResult.projections;
-        setPlayerProjectionsState(allProjections);
-        setProjectionsLastUpdated(batterResult.lastUpdated);
+
+        // Defer state updates to prevent UI freeze
+        setTimeout(() => {
+          setPlayerProjectionsState(allProjections);
+          setProjectionsLastUpdated(batterResult.lastUpdated);
+          setProjectionSourceState('api');
+          setSelectedProjectionSystemState(systemToUse);
+
+          // Save to localStorage
+          const stored = localStorage.getItem(STORAGE_KEY);
+          const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+          existingState.playerProjections = allProjections;
+          existingState.projectionSource = 'api';
+          existingState.selectedProjectionSystem = systemToUse;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+        }, 0);
       } else {
         const [batterResult, pitcherResult] = await Promise.all([
           fetchBatterProjections(systemToUse),
@@ -431,8 +448,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...pitcherResult.projections,
         ];
 
-        setPlayerProjectionsState(allProjections);
-
         // Use the more recent timestamp
         const batterTime = new Date(batterResult.lastUpdated).getTime();
         const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
@@ -440,19 +455,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? batterResult.lastUpdated
           : pitcherResult.lastUpdated;
 
-        setProjectionsLastUpdated(latestTimestamp);
+        // Defer state updates to prevent UI freeze
+        setTimeout(() => {
+          setPlayerProjectionsState(allProjections);
+          setProjectionsLastUpdated(latestTimestamp);
+          setProjectionSourceState('api');
+          setSelectedProjectionSystemState(systemToUse);
+
+          // Save to localStorage
+          const stored = localStorage.getItem(STORAGE_KEY);
+          const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+          existingState.playerProjections = allProjections;
+          existingState.projectionSource = 'api';
+          existingState.selectedProjectionSystem = systemToUse;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+        }, 0);
       }
-
-      setProjectionSourceState('api');
-      setSelectedProjectionSystemState(systemToUse);
-
-      // Save to localStorage
-      const stored = localStorage.getItem(STORAGE_KEY);
-      const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
-      existingState.playerProjections = allProjections;
-      existingState.projectionSource = 'api';
-      existingState.selectedProjectionSystem = systemToUse;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
     } catch {
       setProjectionsError('Unable to load latest projections');
     } finally {
