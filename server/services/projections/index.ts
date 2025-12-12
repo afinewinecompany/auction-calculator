@@ -150,9 +150,12 @@ export async function failScrapeRecord(
 // Projection Inserts
 // ============================================================================
 
+/** Batch size for bulk inserts to avoid PostgreSQL parameter limit */
+const INSERT_BATCH_SIZE = 500;
+
 /**
  * Bulk inserts batter projections linked to a scrape.
- * The insert is atomic - all rows succeed or all fail.
+ * Inserts in batches to avoid PostgreSQL's 65534 parameter limit.
  *
  * @param scrapeId - ID of the scrape record to link projections to
  * @param batters - Array of batter projection data
@@ -165,9 +168,13 @@ export async function insertBatterProjections(
   const db = getDb();
 
   try {
-    await db.insert(batterProjections).values(
-      batters.map((b) => ({ ...b, scrapeId }))
-    );
+    const rows = batters.map((b) => ({ ...b, scrapeId }));
+
+    // Insert in batches to avoid parameter limit
+    for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
+      const batch = rows.slice(i, i + INSERT_BATCH_SIZE);
+      await db.insert(batterProjections).values(batch);
+    }
 
     log('info', 'db_write_complete', {
       table: 'batter_projections',
@@ -186,7 +193,7 @@ export async function insertBatterProjections(
 
 /**
  * Bulk inserts pitcher projections linked to a scrape.
- * The insert is atomic - all rows succeed or all fail.
+ * Inserts in batches to avoid PostgreSQL's 65534 parameter limit.
  *
  * @param scrapeId - ID of the scrape record to link projections to
  * @param pitchers - Array of pitcher projection data
@@ -199,9 +206,13 @@ export async function insertPitcherProjections(
   const db = getDb();
 
   try {
-    await db.insert(pitcherProjections).values(
-      pitchers.map((p) => ({ ...p, scrapeId }))
-    );
+    const rows = pitchers.map((p) => ({ ...p, scrapeId }));
+
+    // Insert in batches to avoid parameter limit
+    for (let i = 0; i < rows.length; i += INSERT_BATCH_SIZE) {
+      const batch = rows.slice(i, i + INSERT_BATCH_SIZE);
+      await db.insert(pitcherProjections).values(batch);
+    }
 
     log('info', 'db_write_complete', {
       table: 'pitcher_projections',
