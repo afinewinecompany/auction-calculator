@@ -84,6 +84,8 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     projectionsLastUpdated,
     projectionsLoading,
     refetchProjections,
+    selectedProjectionSystem,
+    setSelectedProjectionSystem,
   } = useAppContext();
   const { toast } = useToast();
 
@@ -683,10 +685,15 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     });
   };
 
+  const getProjectionSystemLabel = (system: string) => {
+    return system === 'ja_projections' ? 'JA Projections' : 'Steamer';
+  };
+
   const getSummary = () => {
     if (playerProjections.length === 0) return null;
     if (projectionSource === 'api' && projectionsLastUpdated) {
-      return `Steamer Projections (${formatDate(projectionsLastUpdated)}) - ${playerProjections.length} players`;
+      const systemLabel = getProjectionSystemLabel(selectedProjectionSystem);
+      return `${systemLabel} (${formatDate(projectionsLastUpdated)}) - ${playerProjections.length} players`;
     }
     const hittersFile = projectionFiles.find(f => f.kind === 'hitters');
     const pitchersFile = projectionFiles.find(f => f.kind === 'pitchers');
@@ -751,7 +758,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="pt-6 pb-6 space-y-4">
-            {/* Steamer Projections Status */}
+            {/* API Projections Status */}
             {projectionSource === 'api' && playerProjections.length > 0 && (
               <div className="p-4 bg-baseball-cream-dark rounded-md border border-card-border">
                 <div className="flex items-center justify-between flex-wrap gap-3">
@@ -760,21 +767,38 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-display text-lg text-baseball-navy">
-                          STEAMER PROJECTIONS
+                          {getProjectionSystemLabel(selectedProjectionSystem).toUpperCase()} PROJECTIONS
                         </span>
                         <Check className="h-5 w-5 text-baseball-green" />
                       </div>
                       <p className="text-sm text-muted-foreground">
-                        {playerProjections.length} players from FanGraphs
+                        {playerProjections.length} players
+                        {selectedProjectionSystem === 'ja_projections' ? ' (batters only)' : ' from FanGraphs'}
                         {projectionsLastUpdated && ` (updated ${formatDate(projectionsLastUpdated)})`}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <Select
+                      value={selectedProjectionSystem}
+                      onValueChange={(value) => {
+                        setSelectedProjectionSystem(value as 'steamer' | 'ja_projections');
+                        refetchProjections(value as 'steamer' | 'ja_projections');
+                      }}
+                      disabled={projectionsLoading}
+                    >
+                      <SelectTrigger className="w-[160px]" data-testid="select-projection-system">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="steamer">Steamer</SelectItem>
+                        <SelectItem value="ja_projections">JA Projections</SelectItem>
+                      </SelectContent>
+                    </Select>
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={refetchProjections}
+                      onClick={() => refetchProjections()}
                       disabled={projectionsLoading}
                       className="hover-elevate"
                       data-testid="button-refresh-api"
@@ -908,7 +932,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={refetchProjections}
+                      onClick={() => refetchProjections()}
                       disabled={projectionsLoading}
                       className="hover-elevate"
                       data-testid="button-switch-to-api"
@@ -918,7 +942,7 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                       ) : (
                         <Cloud className="h-4 w-4 mr-1" />
                       )}
-                      Use Steamer
+                      Use API
                     </Button>
                   </div>
                 </div>

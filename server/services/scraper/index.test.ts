@@ -106,10 +106,10 @@ describe('scraper service', () => {
 
         await runScrape('batters');
 
-        expect(createScrapeRecord).toHaveBeenCalledWith('batters', expect.any(String));
+        expect(createScrapeRecord).toHaveBeenCalledWith('batters', expect.any(String), 'steamer');
         expect(fetchBatterProjections).toHaveBeenCalled();
         expect(insertBatterProjections).toHaveBeenCalledWith(1, mockBatters);
-        expect(completeScrapeRecord).toHaveBeenCalledWith(1, 1);
+        expect(completeScrapeRecord).toHaveBeenCalledWith(1, 1, { type: 'batters', projectionSystem: 'steamer' });
         expect(log).toHaveBeenCalledWith('info', 'scrape_start', expect.any(Object));
         expect(log).toHaveBeenCalledWith('info', 'scrape_complete', expect.objectContaining({
           type: 'batters',
@@ -126,10 +126,10 @@ describe('scraper service', () => {
 
         await runScrape('pitchers');
 
-        expect(createScrapeRecord).toHaveBeenCalledWith('pitchers', expect.any(String));
+        expect(createScrapeRecord).toHaveBeenCalledWith('pitchers', expect.any(String), 'steamer');
         expect(fetchPitcherProjections).toHaveBeenCalled();
         expect(insertPitcherProjections).toHaveBeenCalledWith(1, mockPitchers);
-        expect(completeScrapeRecord).toHaveBeenCalledWith(1, 1);
+        expect(completeScrapeRecord).toHaveBeenCalledWith(1, 1, { type: 'pitchers', projectionSystem: 'steamer' });
       });
 
       it('should reset consecutive failures on success', async () => {
@@ -297,19 +297,22 @@ describe('scraper service', () => {
   });
 
   describe('runFullScrape', () => {
-    it('should call runScrape for both batters and pitchers', async () => {
+    it('should call runScrape for Steamer batters, pitchers, and JA Projections', async () => {
       vi.mocked(fetchBatterProjections).mockResolvedValueOnce([]);
       vi.mocked(fetchPitcherProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchJABatterProjections).mockResolvedValueOnce([]);
 
       await runFullScrape();
 
       expect(fetchBatterProjections).toHaveBeenCalled();
       expect(fetchPitcherProjections).toHaveBeenCalled();
+      expect(fetchJABatterProjections).toHaveBeenCalled();
     });
 
     it('should log full_scrape_start at beginning', async () => {
       vi.mocked(fetchBatterProjections).mockResolvedValueOnce([]);
       vi.mocked(fetchPitcherProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchJABatterProjections).mockResolvedValueOnce([]);
 
       await runFullScrape();
 
@@ -319,6 +322,7 @@ describe('scraper service', () => {
     it('should log full_scrape_complete at end', async () => {
       vi.mocked(fetchBatterProjections).mockResolvedValueOnce([]);
       vi.mocked(fetchPitcherProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchJABatterProjections).mockResolvedValueOnce([]);
 
       await runFullScrape();
 
@@ -327,11 +331,24 @@ describe('scraper service', () => {
       }));
     });
 
-    it('should continue to pitchers even if batters fail', async () => {
+    it('should scrape both Steamer and JA Projections batters', async () => {
+      vi.mocked(fetchBatterProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchPitcherProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchJABatterProjections).mockResolvedValueOnce([]);
+
+      await runFullScrape();
+
+      expect(fetchBatterProjections).toHaveBeenCalled();
+      expect(fetchPitcherProjections).toHaveBeenCalled();
+      expect(fetchJABatterProjections).toHaveBeenCalled();
+    });
+
+    it('should continue to pitchers and JA Projections even if steamer batters fail', async () => {
       vi.mocked(fetchBatterProjections)
         .mockRejectedValueOnce(new Error('Batter error'))
         .mockRejectedValueOnce(new Error('Batter error')); // For retry
       vi.mocked(fetchPitcherProjections).mockResolvedValueOnce([]);
+      vi.mocked(fetchJABatterProjections).mockResolvedValueOnce([]);
 
       const promise = runFullScrape();
 
@@ -342,38 +359,49 @@ describe('scraper service', () => {
 
       expect(fetchBatterProjections).toHaveBeenCalled();
       expect(fetchPitcherProjections).toHaveBeenCalled();
-      expect(log).toHaveBeenCalledWith('warn', 'batter_scrape_failed', expect.any(Object));
+      expect(fetchJABatterProjections).toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith('warn', 'steamer_batter_scrape_failed', expect.any(Object));
     });
 
     it('should log both failures if both scrapes fail', async () => {
+      // Steamer batters fail
       vi.mocked(fetchBatterProjections)
         .mockRejectedValueOnce(new Error('Batter error'))
         .mockRejectedValueOnce(new Error('Batter error'));
+      // Steamer pitchers fail
       vi.mocked(fetchPitcherProjections)
         .mockRejectedValueOnce(new Error('Pitcher error'))
         .mockRejectedValueOnce(new Error('Pitcher error'));
+      // JA Projections batters fail
+      vi.mocked(fetchJABatterProjections)
+        .mockRejectedValueOnce(new Error('JA error'))
+        .mockRejectedValueOnce(new Error('JA error'));
 
       const promise = runFullScrape();
 
-      // Advance timers for both retries
-      await vi.advanceTimersByTimeAsync(10000);
+      // Advance timers for all retries (3 scrapes × 5s retry each)
+      await vi.advanceTimersByTimeAsync(20000);
 
       await promise;
 
-      expect(log).toHaveBeenCalledWith('warn', 'batter_scrape_failed', expect.any(Object));
-      expect(log).toHaveBeenCalledWith('warn', 'pitcher_scrape_failed', expect.any(Object));
+      expect(log).toHaveBeenCalledWith('warn', 'steamer_batter_scrape_failed', expect.any(Object));
+      expect(log).toHaveBeenCalledWith('warn', 'steamer_pitcher_scrape_failed', expect.any(Object));
+      expect(log).toHaveBeenCalledWith('warn', 'ja_projections_batter_scrape_failed', expect.any(Object));
     });
 
-    it('should not throw even if both scrapes fail', async () => {
+    it('should not throw even if all scrapes fail', async () => {
       vi.mocked(fetchBatterProjections)
         .mockRejectedValueOnce(new Error('Error'))
         .mockRejectedValueOnce(new Error('Error'));
       vi.mocked(fetchPitcherProjections)
         .mockRejectedValueOnce(new Error('Error'))
         .mockRejectedValueOnce(new Error('Error'));
+      vi.mocked(fetchJABatterProjections)
+        .mockRejectedValueOnce(new Error('Error'))
+        .mockRejectedValueOnce(new Error('Error'));
 
       const promise = runFullScrape();
-      await vi.advanceTimersByTimeAsync(10000);
+      await vi.advanceTimersByTimeAsync(20000);
 
       // Should not throw
       await expect(promise).resolves.toBeUndefined();

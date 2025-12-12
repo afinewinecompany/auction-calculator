@@ -23,6 +23,7 @@ import type {
   PitcherProjectionRow,
   ScrapeMetadataRow,
   ScrapeType,
+  ProjectionSystem,
 } from '../../../shared/types/projections';
 
 // ============================================================================
@@ -51,12 +52,14 @@ export type PitcherProjectionResult = ProjectionResult<PitcherProjectionRow>;
  *
  * @param type - Type of scrape ('batters' or 'pitchers')
  * @param sourceUrl - URL being scraped
+ * @param projectionSystem - The projection system ('steamer' or 'ja_projections')
  * @returns The created scrape record with id
  * @throws {AppError} If database insert fails
  */
 export async function createScrapeRecord(
   type: ScrapeType,
-  sourceUrl: string
+  sourceUrl: string,
+  projectionSystem: ProjectionSystem = 'steamer'
 ): Promise<ScrapeMetadataRow> {
   const db = getDb();
 
@@ -66,7 +69,7 @@ export async function createScrapeRecord(
       .values({
         scrapeType: type,
         sourceUrl,
-        projectionSystem: 'steamer',
+        projectionSystem,
         status: 'in_progress',
       })
       .returning();
@@ -77,21 +80,80 @@ export async function createScrapeRecord(
       'DB_INSERT_FAILED',
       `Failed to create scrape record: ${error instanceof Error ? error.message : 'Unknown error'}`,
       500,
-      { type, sourceUrl }
+      { type, sourceUrl, projectionSystem }
     );
   }
 }
 
 /**
- * Marks a scrape record as successfully completed.
+ * Deletes old scrape records and their associated projections for a given type and system.
+ * Called after a successful scrape to clean up old data.
+ *
+ * @param type - Type of scrape ('batters' or 'pitchers')
+ * @param projectionSystem - The projection system to clean up
+ * @param excludeScrapeId - ID of the current scrape to keep
+ * @throws {AppError} If database delete fails
+ */
+export async function deleteOldProjections(
+  type: ScrapeType,
+  projectionSystem: ProjectionSystem,
+  excludeScrapeId: number
+): Promise<void> {
+  const db = getDb();
+
+  try {
+    // Find all old scrape records for this type and system
+    const oldScrapes = await db
+      .select({ id: scrapeMetadata.id })
+      .from(scrapeMetadata)
+      .where(
+        and(
+          eq(scrapeMetadata.scrapeType, type),
+          eq(scrapeMetadata.projectionSystem, projectionSystem)
+        )
+      );
+
+    const oldIds = oldScrapes
+      .map((s) => s.id)
+      .filter((id) => id !== excludeScrapeId);
+
+    if (oldIds.length === 0) {
+      return;
+    }
+
+    // Delete old scrape records (projections cascade due to FK)
+    for (const oldId of oldIds) {
+      await db.delete(scrapeMetadata).where(eq(scrapeMetadata.id, oldId));
+    }
+
+    log('info', 'old_projections_deleted', {
+      type,
+      projectionSystem,
+      deletedCount: oldIds.length,
+      keptScrapeId: excludeScrapeId,
+    });
+  } catch (error) {
+    throw new AppError(
+      'DB_DELETE_FAILED',
+      `Failed to delete old projections: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      500,
+      { type, projectionSystem, excludeScrapeId }
+    );
+  }
+}
+
+/**
+ * Marks a scrape record as successfully completed and cleans up old data.
  *
  * @param scrapeId - ID of the scrape record to update
  * @param playerCount - Number of players scraped
+ * @param cleanup - If true, deletes old projections for the same type/system
  * @throws {AppError} If database update fails
  */
 export async function completeScrapeRecord(
   scrapeId: number,
-  playerCount: number
+  playerCount: number,
+  cleanup: { type: ScrapeType; projectionSystem: ProjectionSystem } | null = null
 ): Promise<void> {
   const db = getDb();
 
@@ -104,6 +166,11 @@ export async function completeScrapeRecord(
         completedAt: new Date(),
       })
       .where(eq(scrapeMetadata.id, scrapeId));
+
+    // Clean up old projections if requested
+    if (cleanup) {
+      await deleteOldProjections(cleanup.type, cleanup.projectionSystem, scrapeId);
+    }
   } catch (error) {
     throw new AppError(
       'DB_UPDATE_FAILED',
@@ -236,21 +303,25 @@ export async function insertPitcherProjections(
 /**
  * Retrieves all batter projections from the most recent successful scrape.
  *
+ * @param projectionSystem - The projection system to query (defaults to 'steamer')
  * @returns Batter projections with metadata, or null if no successful scrape exists
  * @throws {AppError} If database query fails
  */
-export async function getLatestBatterProjections(): Promise<BatterProjectionResult | null> {
+export async function getLatestBatterProjections(
+  projectionSystem: ProjectionSystem = 'steamer'
+): Promise<BatterProjectionResult | null> {
   const db = getDb();
 
   try {
-    // Get the most recent successful batter scrape
+    // Get the most recent successful batter scrape for this projection system
     const [latestScrape] = await db
       .select()
       .from(scrapeMetadata)
       .where(
         and(
           eq(scrapeMetadata.scrapeType, 'batters'),
-          eq(scrapeMetadata.status, 'success')
+          eq(scrapeMetadata.status, 'success'),
+          eq(scrapeMetadata.projectionSystem, projectionSystem)
         )
       )
       .orderBy(desc(scrapeMetadata.completedAt))
@@ -286,21 +357,25 @@ export async function getLatestBatterProjections(): Promise<BatterProjectionResu
 /**
  * Retrieves all pitcher projections from the most recent successful scrape.
  *
+ * @param projectionSystem - The projection system to query (defaults to 'steamer')
  * @returns Pitcher projections with metadata, or null if no successful scrape exists
  * @throws {AppError} If database query fails
  */
-export async function getLatestPitcherProjections(): Promise<PitcherProjectionResult | null> {
+export async function getLatestPitcherProjections(
+  projectionSystem: ProjectionSystem = 'steamer'
+): Promise<PitcherProjectionResult | null> {
   const db = getDb();
 
   try {
-    // Get the most recent successful pitcher scrape
+    // Get the most recent successful pitcher scrape for this projection system
     const [latestScrape] = await db
       .select()
       .from(scrapeMetadata)
       .where(
         and(
           eq(scrapeMetadata.scrapeType, 'pitchers'),
-          eq(scrapeMetadata.status, 'success')
+          eq(scrapeMetadata.status, 'success'),
+          eq(scrapeMetadata.projectionSystem, projectionSystem)
         )
       )
       .orderBy(desc(scrapeMetadata.completedAt))
@@ -337,11 +412,13 @@ export async function getLatestPitcherProjections(): Promise<PitcherProjectionRe
  * Retrieves the most recent successful scrape metadata for a given type.
  *
  * @param type - Type of scrape ('batters' or 'pitchers')
+ * @param projectionSystem - The projection system to query (defaults to 'steamer')
  * @returns Scrape metadata, or null if no successful scrape exists
  * @throws {AppError} If database query fails
  */
 export async function getLatestScrapeMetadata(
-  type: ScrapeType
+  type: ScrapeType,
+  projectionSystem: ProjectionSystem = 'steamer'
 ): Promise<ScrapeMetadataRow | null> {
   const db = getDb();
 
@@ -352,7 +429,8 @@ export async function getLatestScrapeMetadata(
       .where(
         and(
           eq(scrapeMetadata.scrapeType, type),
-          eq(scrapeMetadata.status, 'success')
+          eq(scrapeMetadata.status, 'success'),
+          eq(scrapeMetadata.projectionSystem, projectionSystem)
         )
       )
       .orderBy(desc(scrapeMetadata.completedAt))
@@ -364,7 +442,7 @@ export async function getLatestScrapeMetadata(
       'DB_QUERY_FAILED',
       `Failed to fetch latest scrape metadata: ${error instanceof Error ? error.message : 'Unknown error'}`,
       500,
-      { type }
+      { type, projectionSystem }
     );
   }
 }

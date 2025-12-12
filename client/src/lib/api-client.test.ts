@@ -27,7 +27,7 @@ describe('api-client', () => {
   });
 
   describe('fetchBatterProjections', () => {
-    it('should call the correct API endpoint', async () => {
+    it('should call the correct API endpoint with default system', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -39,7 +39,22 @@ describe('api-client', () => {
 
       await fetchBatterProjections();
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/batters');
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/batters?system=steamer');
+    });
+
+    it('should call the correct API endpoint with specified system', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [],
+            meta: { lastUpdated: '2024-01-15T04:00:00Z', count: 0 },
+          }),
+      });
+
+      await fetchBatterProjections('ja_projections');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/batters?system=ja_projections');
     });
 
     it('should fetch and transform batter projections correctly', async () => {
@@ -244,7 +259,7 @@ describe('api-client', () => {
   });
 
   describe('fetchPitcherProjections', () => {
-    it('should call the correct API endpoint', async () => {
+    it('should call the correct API endpoint with default system', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: () =>
@@ -256,7 +271,22 @@ describe('api-client', () => {
 
       await fetchPitcherProjections();
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/pitchers');
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/pitchers?system=steamer');
+    });
+
+    it('should call the correct API endpoint with specified system', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            data: [],
+            meta: { lastUpdated: '2024-01-15T04:00:00Z', count: 0 },
+          }),
+      });
+
+      await fetchPitcherProjections('ja_projections');
+
+      expect(mockFetch).toHaveBeenCalledWith('/api/v1/projections/pitchers?system=ja_projections');
     });
 
     it('should fetch and transform pitcher projections correctly', async () => {

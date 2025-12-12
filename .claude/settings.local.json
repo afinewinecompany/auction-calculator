@@ -27,7 +27,11 @@
       "Bash(git commit:*)",
       "Bash(DATABASE_URL=\"postgresql://postgres:uZsGDRXUXGlwmZjtowNiBHdMeiSdKZdf@postgres.railway.internal:5432/railway\" npm run db:push)",
       "Bash(DATABASE_URL=\"postgresql://postgres:uZsGDRXUXGlwmZjtowNiBHdMeiSdKZdf@switchback.proxy.rlwy.net:35028/railway\" npm run db:push)",
-      "Bash(git push)"
+      "Bash(git push)",
+      "Bash(curl:*)",
+      "Bash(npx tsx:*)",
+      "Bash(npm run build:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:uZsGDRXUXGlwmZjtowNiBHdMeiSdKZdf@switchback.proxy.rlwy.net:35028/railway\" node:*)"
     ],
     "deny": [],
     "ask": []

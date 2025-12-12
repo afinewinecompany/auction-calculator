@@ -12,7 +12,10 @@ import type {
   ApiBatterProjection,
   ApiPitcherProjection,
   ProjectionMeta,
+  ProjectionSystem,
 } from '@shared/types/projections';
+
+export type { ProjectionSystem };
 
 /** API response wrapper for projections */
 interface ProjectionResponse<T> {
@@ -82,10 +85,13 @@ function transformPitcherToProjection(pitcher: ApiPitcherProjection): PlayerProj
 
 /**
  * Fetch batter projections from API and transform to PlayerProjection format.
+ * @param system - The projection system to fetch (default: 'steamer')
  * @throws Error with descriptive message on network or API failure
  */
-export async function fetchBatterProjections(): Promise<ProjectionResult> {
-  const response = await fetch('/api/v1/projections/batters');
+export async function fetchBatterProjections(
+  system: ProjectionSystem = 'steamer'
+): Promise<ProjectionResult> {
+  const response = await fetch(`/api/v1/projections/batters?system=${system}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
@@ -105,10 +111,13 @@ export async function fetchBatterProjections(): Promise<ProjectionResult> {
 
 /**
  * Fetch pitcher projections from API and transform to PlayerProjection format.
+ * @param system - The projection system to fetch (default: 'steamer')
  * @throws Error with descriptive message on network or API failure
  */
-export async function fetchPitcherProjections(): Promise<ProjectionResult> {
-  const response = await fetch('/api/v1/projections/pitchers');
+export async function fetchPitcherProjections(
+  system: ProjectionSystem = 'steamer'
+): Promise<ProjectionResult> {
+  const response = await fetch(`/api/v1/projections/pitchers?system=${system}`);
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));

@@ -10,6 +10,7 @@ import type {
   AppState,
   ProjectionFile,
 } from '@shared/schema';
+import type { ProjectionSystem } from '@shared/types/projections';
 import { fetchBatterProjections, fetchPitcherProjections } from './api-client';
 
 interface AppContextType {
@@ -49,10 +50,12 @@ interface AppContextType {
   projectionsError: string | null;
   projectionsLastUpdated: string | null;
   projectionSource: 'api' | 'csv' | null;
+  selectedProjectionSystem: ProjectionSystem;
+  setSelectedProjectionSystem: (system: ProjectionSystem) => void;
   setProjectionSource: (source: 'api' | 'csv' | null) => void;
   setProjectionsError: (error: string | null) => void;
   setProjectionsLastUpdated: (timestamp: string | null) => void;
-  refetchProjections: () => Promise<void>;
+  refetchProjections: (system?: ProjectionSystem) => Promise<void>;
 
   clearAll: () => void;
 }
@@ -65,6 +68,7 @@ const DEFAULT_MY_TEAM = 'My Team';
 interface ExtendedAppState extends AppState {
   myTeamName?: string;
   projectionSource?: 'api' | 'csv' | null;
+  selectedProjectionSystem?: ProjectionSystem;
 }
 
 function normalizePicks(picks: DraftPick[], teamName: string): DraftPick[] {
@@ -98,6 +102,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [projectionsError, setProjectionsError] = useState<string | null>(null);
   const [projectionsLastUpdated, setProjectionsLastUpdated] = useState<string | null>(null);
   const [projectionSource, setProjectionSourceState] = useState<'api' | 'csv' | null>(null);
+  const [selectedProjectionSystem, setSelectedProjectionSystemState] = useState<ProjectionSystem>('steamer');
 
   const isClearingRef = useRef(false);
   const myTeamNameRef = useRef<string>(DEFAULT_MY_TEAM);
@@ -135,6 +140,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         myTeamNameRef.current = teamName;
         if (parsed.targetedPlayerIds) setTargetedPlayerIdsState(parsed.targetedPlayerIds);
         if (parsed.projectionSource) setProjectionSourceState(parsed.projectionSource);
+        if (parsed.selectedProjectionSystem) setSelectedProjectionSystemState(parsed.selectedProjectionSystem);
 
         const stateToSave: ExtendedAppState = {
           ...parsed,
@@ -385,46 +391,70 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
   }, []);
 
-  const refetchProjections = useCallback(async () => {
+  const setSelectedProjectionSystem = useCallback((system: ProjectionSystem) => {
+    setSelectedProjectionSystemState(system);
+    // Persist to localStorage
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+    existingState.selectedProjectionSystem = system;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+  }, []);
+
+  const refetchProjections = useCallback(async (system?: ProjectionSystem) => {
+    const systemToUse = system ?? selectedProjectionSystem;
     setProjectionsLoading(true);
     setProjectionsError(null);
 
     try {
-      const [batterResult, pitcherResult] = await Promise.all([
-        fetchBatterProjections(),
-        fetchPitcherProjections(),
-      ]);
+      let allProjections: PlayerProjection[];
 
-      // Merge projections
-      const allProjections = [
-        ...batterResult.projections,
-        ...pitcherResult.projections,
-      ];
+      // JA Projections only has batters, so handle that case
+      if (systemToUse === 'ja_projections') {
+        const batterResult = await fetchBatterProjections(systemToUse);
 
-      setPlayerProjectionsState(allProjections);
+        allProjections = batterResult.projections;
+        setPlayerProjectionsState(allProjections);
+        setProjectionsLastUpdated(batterResult.lastUpdated);
+      } else {
+        const [batterResult, pitcherResult] = await Promise.all([
+          fetchBatterProjections(systemToUse),
+          fetchPitcherProjections(systemToUse),
+        ]);
 
-      // Use the more recent timestamp
-      const batterTime = new Date(batterResult.lastUpdated).getTime();
-      const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
-      const latestTimestamp = batterTime > pitcherTime
-        ? batterResult.lastUpdated
-        : pitcherResult.lastUpdated;
+        // Merge projections
+        allProjections = [
+          ...batterResult.projections,
+          ...pitcherResult.projections,
+        ];
 
-      setProjectionsLastUpdated(latestTimestamp);
+        setPlayerProjectionsState(allProjections);
+
+        // Use the more recent timestamp
+        const batterTime = new Date(batterResult.lastUpdated).getTime();
+        const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
+        const latestTimestamp = batterTime > pitcherTime
+          ? batterResult.lastUpdated
+          : pitcherResult.lastUpdated;
+
+        setProjectionsLastUpdated(latestTimestamp);
+      }
+
       setProjectionSourceState('api');
+      setSelectedProjectionSystemState(systemToUse);
 
-      // Save to localStorage (including projectionSource)
+      // Save to localStorage
       const stored = localStorage.getItem(STORAGE_KEY);
       const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
       existingState.playerProjections = allProjections;
       existingState.projectionSource = 'api';
+      existingState.selectedProjectionSystem = systemToUse;
       localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
     } catch {
       setProjectionsError('Unable to load latest projections');
     } finally {
       setProjectionsLoading(false);
     }
-  }, []);
+  }, [selectedProjectionSystem]);
 
   const clearAll = useCallback(() => {
     isClearingRef.current = true;
@@ -471,6 +501,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         projectionsError,
         projectionsLastUpdated,
         projectionSource,
+        selectedProjectionSystem,
+        setSelectedProjectionSystem,
         setProjectionSource,
         setProjectionsError,
         setProjectionsLastUpdated,

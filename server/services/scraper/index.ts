@@ -27,6 +27,7 @@ import type {
   NewBatterProjection,
   NewPitcherProjection,
   ProjectionSource,
+  ProjectionSystem,
   ScrapeType,
 } from '../../../shared/types/projections';
 
@@ -80,6 +81,13 @@ function getSourceUrl(type: ScrapeType, source: ProjectionSource): string {
 }
 
 /**
+ * Maps a projection source to its database projection system identifier.
+ */
+function getProjectionSystem(source: ProjectionSource): ProjectionSystem {
+  return source === 'ja_projections' ? 'ja_projections' : 'steamer';
+}
+
+/**
  * Fetches projections from the appropriate source.
  */
 async function fetchProjections(
@@ -127,11 +135,12 @@ export async function runScrape(
   }
 
   const url = getSourceUrl(type, source);
+  const projectionSystem = getProjectionSystem(source);
 
-  log('info', 'scrape_start', { type, source, url });
+  log('info', 'scrape_start', { type, source, projectionSystem, url });
 
-  // Create tracking record
-  const scrapeRecord = await createScrapeRecord(type, url);
+  // Create tracking record with projection system
+  const scrapeRecord = await createScrapeRecord(type, url, projectionSystem);
 
   // Attempt scrape with single retry
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -152,12 +161,16 @@ export async function runScrape(
         );
       }
 
-      // Mark scrape as successful
-      await completeScrapeRecord(scrapeRecord.id, projections.length);
+      // Mark scrape as successful and clean up old projections for this type/system
+      await completeScrapeRecord(scrapeRecord.id, projections.length, {
+        type,
+        projectionSystem,
+      });
 
       log('info', 'scrape_complete', {
         type,
         source,
+        projectionSystem,
         count: projections.length,
         scrapeId: scrapeRecord.id,
       });
@@ -186,6 +199,7 @@ export async function runScrape(
         log('error', 'scrape_failed', {
           type,
           source,
+          projectionSystem,
           error: errorMsg,
           attempt,
           scrapeId: scrapeRecord.id,
@@ -214,29 +228,41 @@ export async function runScrape(
 }
 
 /**
- * Runs a full scrape for both batters and pitchers.
+ * Runs a full scrape for both batters and pitchers from all sources.
  *
- * Attempts to scrape batters first, then pitchers.
- * Continues to pitchers even if batters fail.
- * Each scrape failure is logged but doesn't stop the other.
+ * Scrapes from:
+ * 1. FanGraphs Steamer (batters + pitchers)
+ * 2. JA Projections (batters only - no pitcher data available)
+ *
+ * Each scrape failure is logged but doesn't stop others.
  */
 export async function runFullScrape(): Promise<void> {
   log('info', 'full_scrape_start', {});
 
-  // Attempt batter scrape
+  // === FanGraphs Steamer Projections ===
+  // Attempt batter scrape from FanGraphs
   try {
-    await runScrape('batters');
+    await runScrape('batters', 'fangraphs');
   } catch (error) {
-    log('warn', 'batter_scrape_failed', {
+    log('warn', 'steamer_batter_scrape_failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
 
-  // Attempt pitcher scrape
+  // Attempt pitcher scrape from FanGraphs
   try {
-    await runScrape('pitchers');
+    await runScrape('pitchers', 'fangraphs');
   } catch (error) {
-    log('warn', 'pitcher_scrape_failed', {
+    log('warn', 'steamer_pitcher_scrape_failed', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+
+  // === JA Projections (batters only) ===
+  try {
+    await runScrape('batters', 'ja_projections');
+  } catch (error) {
+    log('warn', 'ja_projections_batter_scrape_failed', {
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }

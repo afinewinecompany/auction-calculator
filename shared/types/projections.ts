@@ -28,6 +28,9 @@ export type ScrapeStatus = 'in_progress' | 'success' | 'failed';
 /** Valid projection source values */
 export type ProjectionSource = 'fangraphs' | 'ja_projections';
 
+/** Valid projection system values (stored in database) */
+export type ProjectionSystem = 'steamer' | 'ja_projections';
+
 // ============================================================================
 // Batter Projection Types
 // ============================================================================

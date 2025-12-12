@@ -122,7 +122,7 @@ describe('Projections API Routes', () => {
       expect(response.status).toBe(503);
       expect(response.body).toHaveProperty('error');
       expect(response.body.error.code).toBe('NO_PROJECTION_DATA');
-      expect(response.body.error.message).toBe('No batter projection data available');
+      expect(response.body.error.message).toBe('No batter projection data available for system: steamer');
     });
 
     it('should return 500 on database error', async () => {
@@ -145,6 +145,24 @@ describe('Projections API Routes', () => {
       await request(app).get('/v1/projections/batters');
 
       expect(mockGetLatestBatterProjections).toHaveBeenCalledTimes(1);
+      expect(mockGetLatestBatterProjections).toHaveBeenCalledWith('steamer');
+    });
+
+    it('should accept system query parameter', async () => {
+      mockGetLatestBatterProjections.mockResolvedValue(null);
+
+      const app = createTestApp();
+      await request(app).get('/v1/projections/batters?system=ja_projections');
+
+      expect(mockGetLatestBatterProjections).toHaveBeenCalledWith('ja_projections');
+    });
+
+    it('should return 400 for invalid system parameter', async () => {
+      const app = createTestApp();
+      const response = await request(app).get('/v1/projections/batters?system=invalid');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVALID_SYSTEM');
     });
   });
 
@@ -220,7 +238,7 @@ describe('Projections API Routes', () => {
       expect(response.status).toBe(503);
       expect(response.body).toHaveProperty('error');
       expect(response.body.error.code).toBe('NO_PROJECTION_DATA');
-      expect(response.body.error.message).toBe('No pitcher projection data available');
+      expect(response.body.error.message).toBe('No pitcher projection data available for system: steamer');
     });
 
     it('should return 500 on database error', async () => {
@@ -243,6 +261,24 @@ describe('Projections API Routes', () => {
       await request(app).get('/v1/projections/pitchers');
 
       expect(mockGetLatestPitcherProjections).toHaveBeenCalledTimes(1);
+      expect(mockGetLatestPitcherProjections).toHaveBeenCalledWith('steamer');
+    });
+
+    it('should accept system query parameter', async () => {
+      mockGetLatestPitcherProjections.mockResolvedValue(null);
+
+      const app = createTestApp();
+      await request(app).get('/v1/projections/pitchers?system=ja_projections');
+
+      expect(mockGetLatestPitcherProjections).toHaveBeenCalledWith('ja_projections');
+    });
+
+    it('should return 400 for invalid system parameter', async () => {
+      const app = createTestApp();
+      const response = await request(app).get('/v1/projections/pitchers?system=invalid');
+
+      expect(response.status).toBe(400);
+      expect(response.body.error.code).toBe('INVALID_SYSTEM');
     });
   });
 
