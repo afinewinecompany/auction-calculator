@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { FileText, Check, X, Loader2, ChevronDown, ChevronRight, Users, Activity } from 'lucide-react';
+import { FileText, Check, X, Loader2, ChevronDown, ChevronRight, Users, Activity, Cloud, Upload } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { lookupPlayerPositions } from '@/lib/position-lookup';
 import { mergeProjections, identifyPlayerType } from '@/lib/projection-merger';
@@ -80,13 +80,18 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     setProjectionSource,
     setProjectionsError,
     setProjectionsLastUpdated,
+    projectionSource,
+    projectionsLastUpdated,
+    projectionsLoading,
+    refetchProjections,
   } = useAppContext();
   const { toast } = useToast();
-  
+
   const [hittersState, setHittersState] = useState<FileUploadState>(createEmptyFileState());
   const [pitchersState, setPitchersState] = useState<FileUploadState>(createEmptyFileState());
   const [activeTab, setActiveTab] = useState<'hitters' | 'pitchers'>('hitters');
   const [isDragging, setIsDragging] = useState(false);
+  const [showCustomUpload, setShowCustomUpload] = useState(false);
   
   const getRelevantStats = useCallback((kind: 'hitters' | 'pitchers') => {
     if (!scoringFormat) {
@@ -669,8 +674,20 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     );
   };
 
+  const formatDate = (isoTimestamp: string): string => {
+    const date = new Date(isoTimestamp);
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  };
+
   const getSummary = () => {
     if (playerProjections.length === 0) return null;
+    if (projectionSource === 'api' && projectionsLastUpdated) {
+      return `Steamer Projections (${formatDate(projectionsLastUpdated)}) - ${playerProjections.length} players`;
+    }
     const hittersFile = projectionFiles.find(f => f.kind === 'hitters');
     const pitchersFile = projectionFiles.find(f => f.kind === 'pitchers');
     if (hittersFile && pitchersFile) {
@@ -701,7 +718,11 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                   )}
                   {!isCollapsed && (
                     <CardDescription className="text-baseball-cream/80 text-base mt-1">
-                      Upload hitters and pitchers CSV files (separate or combined)
+                      {projectionSource === 'api'
+                        ? 'Using Steamer projections from FanGraphs'
+                        : projectionSource === 'csv'
+                          ? 'Using custom uploaded projections'
+                          : 'Load projections to calculate auction values'}
                     </CardDescription>
                   )}
                 </div>
@@ -729,46 +750,151 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           </CardHeader>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <CardContent className="pt-6 pb-6">
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'hitters' | 'pitchers')}>
-              <TabsList className="grid w-full grid-cols-2 mb-4">
-                <TabsTrigger 
-                  value="hitters" 
-                  className="flex items-center gap-2"
-                  data-testid="tab-hitters"
-                >
-                  <Users className="h-4 w-4" />
-                  Hitters
-                  {hittersComplete && <Check className="h-4 w-4 text-baseball-green" />}
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="pitchers" 
-                  className="flex items-center gap-2"
-                  data-testid="tab-pitchers"
-                >
-                  <Activity className="h-4 w-4" />
-                  Pitchers
-                  {pitchersComplete && <Check className="h-4 w-4 text-baseball-green" />}
-                </TabsTrigger>
-              </TabsList>
-              <TabsContent value="hitters">
-                {renderUploadPanel('hitters')}
-              </TabsContent>
-              <TabsContent value="pitchers">
-                {renderUploadPanel('pitchers')}
-              </TabsContent>
-            </Tabs>
+          <CardContent className="pt-6 pb-6 space-y-4">
+            {/* Steamer Projections Status */}
+            {projectionSource === 'api' && playerProjections.length > 0 && (
+              <div className="p-4 bg-baseball-cream-dark rounded-md border border-card-border">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <div className="flex items-center gap-3">
+                    <Cloud className="h-6 w-6 text-baseball-navy" />
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-display text-lg text-baseball-navy">
+                          STEAMER PROJECTIONS
+                        </span>
+                        <Check className="h-5 w-5 text-baseball-green" />
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {playerProjections.length} players from FanGraphs
+                        {projectionsLastUpdated && ` (updated ${formatDate(projectionsLastUpdated)})`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={refetchProjections}
+                      disabled={projectionsLoading}
+                      className="hover-elevate"
+                      data-testid="button-refresh-api"
+                    >
+                      {projectionsLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <Cloud className="h-4 w-4 mr-1" />
+                      )}
+                      Refresh
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
 
-            {playerProjections.length > 0 && (
-              <div className="mt-4 p-4 bg-baseball-cream-dark rounded-md border border-card-border">
+            {/* Loading State */}
+            {projectionsLoading && !playerProjections.length && (
+              <div className="p-4 bg-muted rounded-md border border-border">
+                <div className="flex items-center gap-3">
+                  <Loader2 className="h-5 w-5 animate-spin text-baseball-navy" />
+                  <span className="text-sm">Loading Steamer projections...</span>
+                </div>
+              </div>
+            )}
+
+            {/* CSV Upload Section - Optional when API data exists */}
+            {projectionSource === 'api' && playerProjections.length > 0 ? (
+              <Collapsible open={showCustomUpload} onOpenChange={setShowCustomUpload}>
+                <CollapsibleTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-between hover:bg-muted"
+                    data-testid="button-toggle-csv-upload"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Upload className="h-4 w-4" />
+                      Upload Custom Projections (Optional)
+                    </span>
+                    {showCustomUpload ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-4">
+                  <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'hitters' | 'pitchers')}>
+                    <TabsList className="grid w-full grid-cols-2 mb-4">
+                      <TabsTrigger
+                        value="hitters"
+                        className="flex items-center gap-2"
+                        data-testid="tab-hitters"
+                      >
+                        <Users className="h-4 w-4" />
+                        Hitters
+                        {hittersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                      </TabsTrigger>
+                      <TabsTrigger
+                        value="pitchers"
+                        className="flex items-center gap-2"
+                        data-testid="tab-pitchers"
+                      >
+                        <Activity className="h-4 w-4" />
+                        Pitchers
+                        {pitchersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                      </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="hitters">
+                      {renderUploadPanel('hitters')}
+                    </TabsContent>
+                    <TabsContent value="pitchers">
+                      {renderUploadPanel('pitchers')}
+                    </TabsContent>
+                  </Tabs>
+                </CollapsibleContent>
+              </Collapsible>
+            ) : (
+              /* Show CSV upload directly when no API data */
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'hitters' | 'pitchers')}>
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger
+                    value="hitters"
+                    className="flex items-center gap-2"
+                    data-testid="tab-hitters"
+                  >
+                    <Users className="h-4 w-4" />
+                    Hitters
+                    {hittersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="pitchers"
+                    className="flex items-center gap-2"
+                    data-testid="tab-pitchers"
+                  >
+                    <Activity className="h-4 w-4" />
+                    Pitchers
+                    {pitchersComplete && <Check className="h-4 w-4 text-baseball-green" />}
+                  </TabsTrigger>
+                </TabsList>
+                <TabsContent value="hitters">
+                  {renderUploadPanel('hitters')}
+                </TabsContent>
+                <TabsContent value="pitchers">
+                  {renderUploadPanel('pitchers')}
+                </TabsContent>
+              </Tabs>
+            )}
+
+            {/* CSV Upload Summary - show when CSV is the source */}
+            {projectionSource === 'csv' && playerProjections.length > 0 && (
+              <div className="p-4 bg-baseball-cream-dark rounded-md border border-card-border">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div className="flex items-center gap-2">
-                    <Check className="h-5 w-5 text-baseball-green" />
+                    <FileText className="h-5 w-5 text-baseball-navy" />
                     <span className="font-display text-lg text-baseball-navy">
                       {playerProjections.length} PLAYERS READY
                     </span>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-2">
                     {hittersComplete && (
                       <Badge variant="secondary">
                         {hittersFile?.playerCount || hittersState.projections.length} hitters
@@ -779,6 +905,21 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
                         {pitchersFile?.playerCount || pitchersState.projections.length} pitchers
                       </Badge>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={refetchProjections}
+                      disabled={projectionsLoading}
+                      className="hover-elevate"
+                      data-testid="button-switch-to-api"
+                    >
+                      {projectionsLoading ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                      ) : (
+                        <Cloud className="h-4 w-4 mr-1" />
+                      )}
+                      Use Steamer
+                    </Button>
                   </div>
                 </div>
               </div>

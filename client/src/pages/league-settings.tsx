@@ -7,7 +7,6 @@ import { ProjectionUploader } from '@/components/projection-uploader';
 import { ValueCalculationPanel } from '@/components/value-calculation-panel';
 import { PlayerValuesTable } from '@/components/player-values-table';
 import { DataFreshnessIndicator } from '@/components/features/data-freshness-indicator';
-import { ProjectionSourceToggle } from '@/components/features/projection-source-toggle';
 import { Button } from '@/components/ui/button';
 import { ArrowRight, AlertCircle, Upload } from 'lucide-react';
 
@@ -149,9 +148,6 @@ export default function LeagueSettingsPage() {
                 Go to Draft Room <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
-            <ProjectionSourceToggle
-              onSwitchToCsv={() => setCollapsedSections(prev => ({ ...prev, upload: false }))}
-            />
             <PlayerValuesTable />
           </div>
         )}

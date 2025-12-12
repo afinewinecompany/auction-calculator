@@ -443,6 +443,13 @@ function adjustReplacementLevels(
   });
 }
 
+/**
+ * Minimum z-score threshold for positive value.
+ * Players below this absolute z-score will always get $1 value regardless of
+ * replacement level, preventing inflated values for extremely low-stat players.
+ */
+const MIN_ZSCORE_FOR_VALUE = -1.5;
+
 function calculateVARPerPosition(
   draftablePlayers: DraftablePlayer[],
   positionReplacements: Map<string, PositionReplacementLevel>
@@ -459,6 +466,14 @@ function calculateVARPerPosition(
     : 0;
 
   draftablePlayers.forEach(dp => {
+    // Players with extremely negative z-scores should not get positive VAR
+    // even if the replacement level is worse. This prevents inflated values
+    // for players projected for minimal playing time.
+    if (dp.totalZScore < MIN_ZSCORE_FOR_VALUE) {
+      dp.var = 0;
+      return;
+    }
+
     const posRep = positionReplacements.get(dp.assignedPosition);
     let replacementZScore: number;
 
