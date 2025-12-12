@@ -25,13 +25,13 @@ export function DraftMetrics({ leagueSettings, draftState, playerValues, pending
   const inflationDirection = inflationRate > 0 ? '↑' : inflationRate < 0 ? '↓' : '→';
 
   return (
-    <div className="bg-baseball-navy text-baseball-cream border-b-4 border-baseball-leather shadow-lg sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-6 py-4">
+    <div className="glass-header text-baseball-cream border-b border-baseball-leather/30 shadow-elevated sticky top-0 z-50">
+      <div className="max-w-7xl mx-auto px-6 py-5">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">BUDGET REMAINING</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-baseball-cream/70 font-semibold">BUDGET REMAINING</p>
             <div className="flex items-baseline gap-2">
-              <p className="font-mono text-3xl font-bold" data-testid="text-budget-remaining">
+              <p className="font-mono text-4xl font-bold transition-smooth" data-testid="text-budget-remaining">
                 ${budgetRemaining.toLocaleString()}
               </p>
               <p className="text-sm text-baseball-cream/60 font-mono">
@@ -41,9 +41,9 @@ export function DraftMetrics({ leagueSettings, draftState, playerValues, pending
           </div>
 
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">ROSTER SPOTS LEFT</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-baseball-cream/70 font-semibold">ROSTER SPOTS LEFT</p>
             <div className="flex items-baseline gap-2">
-              <p className="font-mono text-3xl font-bold" data-testid="text-players-left">
+              <p className="font-mono text-4xl font-bold transition-smooth" data-testid="text-players-left">
                 {playersLeftToDraft}
               </p>
               <p className="text-sm text-baseball-cream/60 font-mono">
@@ -53,10 +53,10 @@ export function DraftMetrics({ leagueSettings, draftState, playerValues, pending
           </div>
 
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">INFLATION RATE</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-baseball-cream/70 font-semibold">INFLATION RATE</p>
             <div className="flex items-baseline gap-2">
-              <p 
-                className={`font-mono text-3xl font-bold ${
+              <p
+                className={`font-mono text-4xl font-bold transition-smooth ${
                   inflationRate > 0 ? 'text-inflation' : inflationRate < 0 ? 'text-deflation' : ''
                 }`}
                 data-testid="text-inflation-rate"
@@ -70,9 +70,9 @@ export function DraftMetrics({ leagueSettings, draftState, playerValues, pending
           </div>
 
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-wider text-baseball-cream/70 font-semibold">AVG $/PLAYER</p>
+            <p className="text-xs font-sans uppercase tracking-widest text-baseball-cream/70 font-semibold">AVG $/PLAYER</p>
             <div className="flex items-baseline gap-2">
-              <p className="font-mono text-3xl font-bold" data-testid="text-avg-cost">
+              <p className="font-mono text-4xl font-bold transition-smooth" data-testid="text-avg-cost">
                 ${avgCostPerPlayer.toFixed(2)}
               </p>
               <p className="text-sm text-baseball-cream/60 font-mono">

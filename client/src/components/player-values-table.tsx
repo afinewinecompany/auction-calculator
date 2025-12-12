@@ -170,7 +170,7 @@ export function PlayerValuesTable() {
         </div>
       </div>
 
-      <div className="border border-card-border rounded-lg overflow-hidden shadow-md">
+      <div className="glass-card-strong rounded-xl shadow-float hover-lift border border-card-border overflow-hidden">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader className="bg-baseball-leather">

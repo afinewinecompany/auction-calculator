@@ -48,7 +48,7 @@ export function DraftLog({ picks, onUpdatePick, onDeletePick }: DraftLogProps) {
   };
 
   return (
-    <Card className="border-card-border shadow-md h-fit sticky top-24">
+    <Card className="glass-card-strong rounded-xl p-8 shadow-float hover-lift border-card-border h-fit sticky top-24">
       <CardHeader className="bg-baseball-leather text-baseball-cream pb-4">
         <CardTitle className="font-display text-2xl tracking-tight">
           DRAFT LOG

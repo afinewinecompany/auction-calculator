@@ -147,7 +147,7 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
 
   return (
     <Collapsible open={!isCollapsed} onOpenChange={() => onToggle?.()}>
-      <Card className="border-card-border shadow-md">
+      <Card className="glass-card-strong rounded-xl p-8 shadow-float hover-lift border-card-border">
         <CollapsibleTrigger asChild>
           <CardHeader className="bg-baseball-leather text-baseball-cream pb-6 cursor-pointer hover-elevate">
             <div className="flex items-center justify-between gap-3">
@@ -395,7 +395,7 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
                 onClick={handleCalculate}
                 size="lg"
                 disabled={isCalculating}
-                className="bg-baseball-green hover-elevate active-elevate-2"
+                className="bg-baseball-green button-modern shadow-float focus-glow"
                 data-testid="button-calculate-values"
               >
                 <Calculator className="mr-2 h-5 w-5" />

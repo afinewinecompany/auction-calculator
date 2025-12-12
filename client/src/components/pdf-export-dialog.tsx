@@ -94,7 +94,7 @@ export function PDFExportDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="glass-card-strong shadow-elevated rounded-2xl sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="font-display text-xl tracking-tight">Export Cheat Sheet</DialogTitle>
           <DialogDescription>

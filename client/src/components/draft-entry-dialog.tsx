@@ -59,7 +59,7 @@ export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEn
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && handleCancel()}>
-      <DialogContent className="sm:max-w-md bg-card border-card-border">
+      <DialogContent className="glass-card-strong shadow-elevated rounded-2xl sm:max-w-md bg-card border-card-border">
         <DialogHeader>
           <DialogTitle className="font-display text-2xl text-baseball-leather tracking-tight">
             RECORD DRAFT PICK
@@ -144,7 +144,7 @@ export function DraftEntryDialog({ player, isOpen, onClose, onConfirm }: DraftEn
           <Button
             onClick={handleConfirm}
             disabled={!canConfirm}
-            className="bg-baseball-navy hover-elevate active-elevate-2"
+            className="bg-baseball-navy button-modern shadow-float focus-glow"
             data-testid="button-confirm-draft"
           >
             Record Pick

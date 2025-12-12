@@ -63,11 +63,11 @@ export default function LeagueSettingsPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <header className="border-b border-border bg-card">
-        <div className="max-w-7xl mx-auto px-6 py-6">
-          <h1 className="font-display text-5xl font-bold text-baseball-leather tracking-tighter" data-testid="text-page-title">
+      <header className="glass-card border-b border-border/50 shadow-float">
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <h1 className="font-display text-6xl font-bold text-baseball-leather tracking-tighter" data-testid="text-page-title">
             FANTASY BASEBALL
-            <span className="block text-3xl text-baseball-navy mt-1">Auction Value Calculator</span>
+            <span className="block text-4xl text-baseball-navy mt-2 font-semibold">Auction Value Calculator</span>
           </h1>
         </div>
       </header>
@@ -142,7 +142,7 @@ export default function LeagueSettingsPage() {
               <Button
                 onClick={handleGoToDraft}
                 size="lg"
-                className="bg-baseball-navy hover-elevate active-elevate-2"
+                className="bg-baseball-navy button-modern shadow-float focus-glow"
                 data-testid="button-go-to-draft"
               >
                 Go to Draft Room <ArrowRight className="ml-2 h-5 w-5" />

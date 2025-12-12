@@ -147,7 +147,7 @@ export function PositionalNeedsTracker({
   };
 
   return (
-    <Card className="border-card-border">
+    <Card className="glass-card-strong rounded-xl p-8 shadow-float hover-lift border-card-border">
       <CardHeader className="pb-3">
         <CardTitle className="font-display text-lg tracking-tight flex items-center justify-between">
           ROSTER NEEDS

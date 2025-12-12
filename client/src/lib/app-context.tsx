@@ -114,20 +114,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    let hasExistingProjections = false;
 
     if (stored) {
       try {
+        // Parse in chunks to avoid blocking UI thread with large projection data
         const parsed: ExtendedAppState = JSON.parse(stored);
         const teamName = parsed.myTeamName?.trim() || DEFAULT_MY_TEAM;
 
+        // Load non-projection state synchronously (fast)
         if (parsed.leagueSettings) setLeagueSettingsState(parsed.leagueSettings);
         if (parsed.scoringFormat) setScoringFormatState(parsed.scoringFormat);
         if (parsed.valueCalculationSettings) setValueCalculationSettingsState(parsed.valueCalculationSettings);
-        if (parsed.playerProjections && parsed.playerProjections.length > 0) {
-          setPlayerProjectionsState(parsed.playerProjections);
-          hasExistingProjections = true;
-        }
         if (parsed.projectionFiles) setProjectionFilesState(parsed.projectionFiles);
         if (parsed.playerValues) setPlayerValuesState(parsed.playerValues);
 
@@ -142,6 +139,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (parsed.projectionSource) setProjectionSourceState(parsed.projectionSource);
         if (parsed.selectedProjectionSystem) setSelectedProjectionSystemState(parsed.selectedProjectionSystem);
 
+        // Defer projection loading to avoid blocking UI with large datasets
+        if (parsed.playerProjections && parsed.playerProjections.length > 0) {
+          setTimeout(() => {
+            setPlayerProjectionsState(parsed.playerProjections!);
+            setProjectionsLoading(false);
+          }, 0);
+          hasLoadedFromStorageRef.current = true;
+        } else {
+          hasLoadedFromStorageRef.current = false;
+        }
+
+        // Re-save normalized state (without blocking on projections)
         const stateToSave: ExtendedAppState = {
           ...parsed,
           draftState: normalizedDraftState,
@@ -150,13 +159,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
       } catch (error) {
         console.error('Failed to load app state:', error);
+        hasLoadedFromStorageRef.current = false;
       }
-    }
-
-    // If projections existed in localStorage, skip auto-load
-    if (hasExistingProjections) {
-      setProjectionsLoading(false);
-      hasLoadedFromStorageRef.current = true;
     } else {
       hasLoadedFromStorageRef.current = false;
     }

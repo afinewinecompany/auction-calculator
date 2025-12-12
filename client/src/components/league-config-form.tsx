@@ -60,7 +60,7 @@ export function LeagueConfigForm({ onComplete, isComplete, isCollapsed = false, 
 
   return (
     <Collapsible open={!isCollapsed} onOpenChange={() => onToggle?.()}>
-      <Card className="border-card-border shadow-md">
+      <Card className="glass-card-strong rounded-xl p-8 shadow-float hover-lift border-card-border">
         <CollapsibleTrigger asChild>
           <CardHeader className="bg-baseball-leather text-baseball-cream pb-6 cursor-pointer hover-elevate">
             <div className="flex items-center justify-between gap-3">
@@ -223,7 +223,7 @@ export function LeagueConfigForm({ onComplete, isComplete, isCollapsed = false, 
                   <Button
                     type="submit"
                     size="lg"
-                    className="bg-baseball-navy hover-elevate active-elevate-2"
+                    className="bg-baseball-navy button-modern shadow-float focus-glow"
                     data-testid="button-save-league-config"
                   >
                     {isComplete ? 'Update Configuration' : 'Save & Continue'}

@@ -91,7 +91,7 @@ export function WelcomeDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="glass-card-strong shadow-elevated rounded-2xl sm:max-w-lg">
         {step === 'welcome' ? (
           <>
             <DialogHeader>

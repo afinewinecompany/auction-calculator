@@ -245,7 +245,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
       <div className="border border-card-border rounded-lg overflow-hidden shadow-md bg-card">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <Table>
-            <TableHeader className="bg-baseball-leather sticky top-0 z-10">
+            <TableHeader className="bg-baseball-navy/10 backdrop-blur-sm sticky top-0 z-10">
               <TableRow className="hover:bg-baseball-leather">
                 <TableHead className="text-baseball-cream font-bold w-10">
                   <Star className="h-4 w-4" />
@@ -273,7 +273,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
                     className={`${
                       player.isDrafted
                         ? 'opacity-50 bg-muted/50'
-                        : 'hover-elevate cursor-pointer active-elevate-2'
+                        : 'hover:bg-accent/30 transition-smooth cursor-pointer border-b border-border/30'
                     } ${targeted && !player.isDrafted ? 'ring-2 ring-yellow-500 ring-inset' : ''}`}
                     onClick={(e) => {
                       if ((e.target as HTMLElement).closest('[data-quick-draft]')) return;
