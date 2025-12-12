@@ -9,7 +9,8 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { Calculator, Check, ChevronDown, ChevronRight, Sparkles, Info } from 'lucide-react';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Calculator, Check, ChevronDown, ChevronRight, Sparkles, Info, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { ValueCalculationSettings, ReplacementLevelMethod } from '@shared/schema';
 import { STANDARD_SPLITS } from '@shared/schema';
@@ -364,16 +365,29 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
                 <p className="text-xs text-muted-foreground">{recommendedSplit.reason}</p>
               )}
 
-              <div className="flex justify-between text-sm pt-2">
-                <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
-                  <p className="text-xs text-muted-foreground">Hitters ({settings.hitterBudgetPercent}%)</p>
-                  <p className="font-mono font-bold text-baseball-navy">${hitterBudget.toLocaleString()}</p>
+              {isCalculating ? (
+                <div className="flex justify-between text-sm pt-2 gap-4">
+                  <div className="flex-1">
+                    <Skeleton className="h-4 w-32 mb-2" />
+                    <Skeleton className="h-6 w-24" />
+                  </div>
+                  <div className="flex-1">
+                    <Skeleton className="h-4 w-32 mb-2" />
+                    <Skeleton className="h-6 w-24" />
+                  </div>
                 </div>
-                <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
-                  <p className="text-xs text-muted-foreground">Pitchers ({100 - settings.hitterBudgetPercent}%)</p>
-                  <p className="font-mono font-bold text-baseball-navy">${pitcherBudget.toLocaleString()}</p>
+              ) : (
+                <div className="flex justify-between text-sm pt-2">
+                  <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
+                    <p className="text-xs text-muted-foreground">Hitters ({settings.hitterBudgetPercent}%)</p>
+                    <p className="font-mono font-bold text-baseball-navy">${hitterBudget.toLocaleString()}</p>
+                  </div>
+                  <div className="bg-baseball-cream-dark px-4 py-2 rounded border border-card-border">
+                    <p className="text-xs text-muted-foreground">Pitchers ({100 - settings.hitterBudgetPercent}%)</p>
+                    <p className="font-mono font-bold text-baseball-navy">${pitcherBudget.toLocaleString()}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             <div className="flex flex-col items-end gap-3 pt-4">
@@ -398,8 +412,17 @@ export function ValueCalculationPanel({ onComplete, isComplete, isCollapsed = fa
                 className="bg-baseball-green button-modern shadow-float focus-glow"
                 data-testid="button-calculate-values"
               >
-                <Calculator className="mr-2 h-5 w-5" />
-                {isCalculating ? 'Calculating...' : isComplete ? 'Recalculate Values' : 'Generate Auction Values'}
+                {isCalculating ? (
+                  <>
+                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                    Calculating...
+                  </>
+                ) : (
+                  <>
+                    <Calculator className="mr-2 h-5 w-5" />
+                    {isComplete ? 'Recalculate Values' : 'Generate Auction Values'}
+                  </>
+                )}
               </Button>
             </div>
           </CardContent>

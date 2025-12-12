@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight, Lock } from 'lucide-react';
+import { Search, TrendingUp, TrendingDown, Star, DollarSign, ChevronLeft, ChevronRight, Lock, ChevronDown } from 'lucide-react';
 import type { PlayerValue, DraftPick } from '@shared/schema';
 import type { PendingBid } from '@/lib/calculations';
 
@@ -20,6 +20,14 @@ interface DraftPlayerTableProps {
   pendingBids?: Map<string, PendingBid>;
 }
 
+// Helper function to get position badge variant
+function getPositionBadgeVariant(pos: string): "position-infield" | "position-outfield" | "position-pitcher" | "position-util" {
+  if (['C', '1B', '2B', '3B', 'SS', 'MI', 'CI'].includes(pos)) return 'position-infield';
+  if (['OF'].includes(pos)) return 'position-outfield';
+  if (['SP', 'RP', 'P'].includes(pos)) return 'position-pitcher';
+  return 'position-util';
+}
+
 export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPendingBidChange, pendingBids }: DraftPlayerTableProps) {
   const { toggleTargetPlayer, isPlayerTargeted, targetedPlayerIds } = useAppContext();
   const [searchQuery, setSearchQuery] = useState('');
@@ -31,6 +39,7 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const [quickDraftPrices, setQuickDraftPrices] = useState<Record<string, string>>({});
   const [quickDraftIsMyBid, setQuickDraftIsMyBid] = useState<Record<string, boolean>>({});
   const [currentPage, setCurrentPage] = useState(0);
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   const allPositions = useMemo(() => {
     const positions = new Set<string>();
@@ -49,44 +58,34 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
   const isTargeted = useCallback((playerId: string) => targetedSet.has(playerId), [targetedSet]);
 
   const filteredPlayers = useMemo(() => {
-    let filtered = players;
+    // Early exit if no players
+    if (players.length === 0) return [];
 
-    if (hideDrafted) {
-      filtered = filtered.filter(p => !p.isDrafted);
-    }
+    // Optimize: combine filters into a single pass
+    const lowerQuery = searchQuery.toLowerCase();
+    const filtered = players.filter(player => {
+      // Early exit conditions
+      if (hideDrafted && player.isDrafted) return false;
+      if (showWithCostOnly && (player.isDrafted || (player.adjustedValue || player.originalValue) <= 1)) return false;
+      if (showPendingBidsOnly && pendingBids && !pendingBids.has(player.id)) return false;
+      if (showTargetsOnly && !targetedSet.has(player.id)) return false;
+      if (searchQuery && !player.name.toLowerCase().includes(lowerQuery)) return false;
+      if (positionFilter !== 'all' && !player.positions.includes(positionFilter)) return false;
 
-    if (showWithCostOnly) {
-      filtered = filtered.filter(p => !p.isDrafted && (p.adjustedValue || p.originalValue) > 1);
-    }
+      return true;
+    });
 
-    if (showPendingBidsOnly && pendingBids) {
-      filtered = filtered.filter(p => pendingBids.has(p.id));
-    }
-
-    if (searchQuery) {
-      const lowerQuery = searchQuery.toLowerCase();
-      filtered = filtered.filter(player =>
-        player.name.toLowerCase().includes(lowerQuery)
-      );
-    }
-
-    if (positionFilter !== 'all') {
-      filtered = filtered.filter(player =>
-        player.positions.includes(positionFilter)
-      );
-    }
-
-    if (showTargetsOnly) {
-      filtered = filtered.filter(player => targetedSet.has(player.id));
-    }
-
+    // Sort with optimized comparisons
     return filtered.sort((a, b) => {
-      if (a.isDrafted && !b.isDrafted) return 1;
-      if (!a.isDrafted && b.isDrafted) return -1;
+      // Primary sort: drafted status
+      if (a.isDrafted !== b.isDrafted) return a.isDrafted ? 1 : -1;
+
+      // Secondary sort: targeted status
       const aTargeted = targetedSet.has(a.id);
       const bTargeted = targetedSet.has(b.id);
-      if (aTargeted && !bTargeted) return -1;
-      if (!aTargeted && bTargeted) return 1;
+      if (aTargeted !== bTargeted) return aTargeted ? -1 : 1;
+
+      // Tertiary sort: value
       return (b.adjustedValue || b.originalValue) - (a.adjustedValue || a.originalValue);
     });
   }, [players, searchQuery, positionFilter, hideDrafted, showWithCostOnly, showPendingBidsOnly, pendingBids, showTargetsOnly, targetedSet]);
@@ -174,93 +173,164 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col sm:flex-row gap-4">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search players..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-            data-testid="input-search-draft-players"
-          />
-        </div>
+      <div className="glass-card-strong rounded-xl shadow-float">
+        <button
+          onClick={() => setFiltersExpanded(!filtersExpanded)}
+          className="w-full px-4 py-3 flex items-center justify-between hover:bg-accent/20 transition-smooth rounded-t-xl"
+        >
+          <span className="font-display text-sm uppercase tracking-wider">Filters</span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${filtersExpanded ? 'rotate-180' : ''}`} />
+        </button>
 
-        <div className="flex gap-3 flex-wrap">
-          <Button
-            variant={showTargetsOnly ? "default" : "outline"}
-            onClick={() => setShowTargetsOnly(!showTargetsOnly)}
-            data-testid="button-toggle-draft-targets"
-            className={showTargetsOnly ? "" : "hover-elevate"}
-          >
-            <Star className={`mr-2 h-4 w-4 ${showTargetsOnly ? 'fill-current' : ''}`} />
-            Targets ({targetedPlayerIds.length})
-          </Button>
+        {filtersExpanded && (
+          <div className="p-4 space-y-4 border-t border-border/30">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search players..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 h-10 focus-glow"
+                data-testid="input-search-draft-players"
+              />
+            </div>
 
-          <Select value={positionFilter} onValueChange={setPositionFilter}>
-            <SelectTrigger className="w-32" data-testid="select-draft-position-filter">
-              <SelectValue placeholder="Position" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              {allPositions.map(pos => (
-                <SelectItem key={pos} value={pos}>{pos}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            {/* Position chips */}
+            <div className="space-y-2">
+              <label className="text-xs font-display uppercase tracking-wider text-muted-foreground">
+                Positions
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setPositionFilter('all')}
+                  data-testid="select-draft-position-filter"
+                  className={`
+                    px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                    ${positionFilter === 'all'
+                      ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                    }
+                  `}
+                >
+                  All
+                </button>
+                {allPositions.map(pos => (
+                  <button
+                    key={pos}
+                    onClick={() => setPositionFilter(pos)}
+                    className={`
+                      px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                      ${positionFilter === pos
+                        ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      }
+                    `}
+                  >
+                    {pos}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <Button
-            variant={hideDrafted ? "default" : "outline"}
-            onClick={() => setHideDrafted(!hideDrafted)}
-            data-testid="button-toggle-drafted"
-            className={hideDrafted ? "" : "hover-elevate"}
-          >
-            {hideDrafted ? 'Show Drafted' : 'Hide Drafted'}
-          </Button>
+            {/* Filter toggles as compact chips */}
+            <div className="space-y-2">
+              <label className="text-xs font-display uppercase tracking-wider text-muted-foreground">
+                Show
+              </label>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => setShowTargetsOnly(!showTargetsOnly)}
+                  data-testid="button-toggle-draft-targets"
+                  className={`
+                    px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                    flex items-center gap-1.5
+                    ${showTargetsOnly
+                      ? 'bg-baseball-green text-white shadow-glow-success'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                    }
+                  `}
+                >
+                  <Star className={`h-3 w-3 ${showTargetsOnly ? 'fill-current' : ''}`} />
+                  Targets Only ({targetedPlayerIds.length})
+                </button>
+                <button
+                  onClick={() => setHideDrafted(!hideDrafted)}
+                  data-testid="button-toggle-drafted"
+                  className={`
+                    px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                    flex items-center gap-1.5
+                    ${hideDrafted
+                      ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                    }
+                  `}
+                >
+                  <Lock className="h-3 w-3" />
+                  Hide Drafted
+                </button>
+                <button
+                  onClick={() => setShowWithCostOnly(!showWithCostOnly)}
+                  data-testid="button-toggle-with-cost"
+                  className={`
+                    px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                    flex items-center gap-1.5
+                    ${showWithCostOnly
+                      ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                      : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                    }
+                  `}
+                >
+                  <DollarSign className="h-3 w-3" />
+                  Valuables Only ({playersWithCost.length})
+                </button>
+                {pendingBids && pendingBids.size > 0 && (
+                  <button
+                    onClick={() => setShowPendingBidsOnly(!showPendingBidsOnly)}
+                    data-testid="button-toggle-pending-bids"
+                    className={`
+                      px-3 py-1.5 rounded-lg text-xs font-semibold transition-smooth
+                      flex items-center gap-1.5
+                      ${showPendingBidsOnly
+                        ? 'bg-primary text-primary-foreground shadow-glow-primary'
+                        : 'bg-muted/50 text-muted-foreground hover:bg-muted'
+                      }
+                    `}
+                  >
+                    <Lock className="h-3 w-3" />
+                    Pending ({pendingBids.size})
+                  </button>
+                )}
+              </div>
+            </div>
 
-          <Button
-            variant={showWithCostOnly ? "default" : "outline"}
-            onClick={() => setShowWithCostOnly(!showWithCostOnly)}
-            data-testid="button-toggle-with-cost"
-            className={showWithCostOnly ? "" : "hover-elevate"}
-          >
-            <DollarSign className="mr-2 h-4 w-4" />
-            {showWithCostOnly ? 'Show All' : `$2+ (${playersWithCost.length})`}
-          </Button>
-
-          {pendingBids && pendingBids.size > 0 && (
-            <Button
-              variant={showPendingBidsOnly ? "default" : "outline"}
-              onClick={() => setShowPendingBidsOnly(!showPendingBidsOnly)}
-              data-testid="button-toggle-pending-bids"
-              className={showPendingBidsOnly ? "" : "hover-elevate"}
-            >
-              <Lock className="mr-2 h-4 w-4" />
-              {showPendingBidsOnly ? 'Show All' : `Pending (${pendingBids.size})`}
-            </Button>
-          )}
-        </div>
+            {/* Active filter count */}
+            <div className="text-xs text-muted-foreground font-mono">
+              {filteredPlayers.length} players shown
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="border border-card-border rounded-lg overflow-hidden shadow-md bg-card">
         <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
           <Table>
-            <TableHeader className="bg-baseball-navy/10 backdrop-blur-sm sticky top-0 z-10">
-              <TableRow className="hover:bg-baseball-leather">
-                <TableHead className="text-baseball-cream font-bold w-10">
+            <TableHeader className="bg-baseball-navy/10 backdrop-blur-sm sticky top-0 z-40 border-b-2 border-baseball-navy/20">
+              <TableRow className="border-none">
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4 w-10">
                   <Star className="h-4 w-4" />
                 </TableHead>
-                <TableHead className="text-baseball-cream font-bold">PLAYER</TableHead>
-                <TableHead className="text-baseball-cream font-bold">POS</TableHead>
-                <TableHead className="text-baseball-cream font-bold">ORIG $</TableHead>
-                <TableHead className="text-baseball-cream font-bold">ADJ $</TableHead>
-                <TableHead className="text-baseball-cream font-bold">Δ</TableHead>
-                {onQuickDraft && <TableHead className="text-baseball-cream font-bold">QUICK DRAFT</TableHead>}
-                <TableHead className="text-baseball-cream font-bold">STATUS</TableHead>
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4">Player</TableHead>
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4">Pos</TableHead>
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4 text-right">Orig $</TableHead>
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4 text-right">Adj $</TableHead>
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4">Δ</TableHead>
+                {onQuickDraft && <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4">Quick Draft</TableHead>}
+                <TableHead className="font-display text-sm uppercase tracking-wider text-foreground/80 py-4">Status</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {paginatedPlayers.map((player) => {
+              {paginatedPlayers.map((player, index) => {
                 const originalValue = player.originalValue;
                 const adjustedValue = player.adjustedValue || originalValue;
                 const delta = adjustedValue - originalValue;
@@ -270,17 +340,22 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
                 return (
                   <TableRow
                     key={player.id}
-                    className={`${
-                      player.isDrafted
-                        ? 'opacity-50 bg-muted/50'
-                        : 'hover:bg-accent/30 transition-smooth cursor-pointer border-b border-border/30'
-                    } ${targeted && !player.isDrafted ? 'ring-2 ring-yellow-500 ring-inset' : ''}`}
+                    className={`
+                      relative
+                      hover:bg-accent/30 transition-smooth cursor-pointer
+                      border-b border-border/30
+                      ${index % 2 === 0 ? 'bg-muted/20' : 'bg-transparent'}
+                      ${player.isDrafted ? 'opacity-50' : ''}
+                    `}
                     onClick={(e) => {
                       if ((e.target as HTMLElement).closest('[data-quick-draft]')) return;
                       if (!player.isDrafted) onPlayerSelect(player);
                     }}
                     data-testid={`row-draft-player-${player.id}`}
                   >
+                    {targeted && !player.isDrafted && (
+                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-baseball-green shadow-glow-success" />
+                    )}
                     <TableCell className="w-10">
                       <Button
                         size="icon"
@@ -307,25 +382,41 @@ export function DraftPlayerTable({ players, onPlayerSelect, onQuickDraft, onPend
                     <TableCell>
                       <div className="flex gap-1 flex-wrap">
                         {player.positions.slice(0, 2).map(pos => (
-                          <Badge key={pos} variant="secondary" className="text-xs">
+                          <Badge
+                            key={pos}
+                            variant={getPositionBadgeVariant(pos)}
+                            className="text-xs font-semibold px-2 py-0.5 transition-smooth hover:scale-105"
+                          >
                             {pos}
                           </Badge>
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell className="font-mono text-muted-foreground">
+                    <TableCell className="font-mono text-muted-foreground text-right">
                       ${originalValue}
                     </TableCell>
-                    <TableCell className="font-mono font-bold text-lg">
+                    <TableCell className="text-right">
                       {player.isDrafted ? (
-                        <span className="text-muted-foreground">—</span>
+                        <span className="font-mono text-muted-foreground">—</span>
                       ) : player.hasPendingBid ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center justify-end gap-1.5">
                           <Lock className="h-3.5 w-3.5 text-amber-600" />
-                          <span className="text-amber-700">${adjustedValue}</span>
+                          <span className="font-mono text-lg font-bold text-amber-700">${adjustedValue}</span>
                         </div>
                       ) : (
-                        <span className="text-baseball-navy">${adjustedValue}</span>
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`
+                            font-mono text-lg font-bold
+                            ${delta > 0 ? 'text-inflation' : delta < 0 ? 'text-deflation' : 'text-baseball-navy'}
+                          `}>
+                            ${adjustedValue}
+                          </span>
+                          {delta !== 0 && (
+                            <span className="text-xs text-muted-foreground font-mono">
+                              (was ${originalValue})
+                            </span>
+                          )}
+                        </div>
                       )}
                     </TableCell>
                     <TableCell>

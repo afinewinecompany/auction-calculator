@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import { Check } from 'lucide-react';
 import type { LeagueSettings, DraftState, PlayerValue } from '@shared/schema';
 
 interface PositionalNeedsTrackerProps {
@@ -120,23 +121,46 @@ export function PositionalNeedsTracker({
   const PositionRow = ({ need }: { need: PositionNeed }) => {
     const fillPercent = need.required > 0 ? (need.filled / need.required) * 100 : 0;
     const isComplete = need.remaining === 0;
-    
+
     return (
-      <div className="flex items-center gap-3 py-2" data-testid={`position-need-${need.position.toLowerCase()}`}>
+      <div className="relative flex items-center gap-3 py-2" data-testid={`position-need-${need.position.toLowerCase()}`}>
         <div className="w-10 flex-shrink-0">
-          <Badge 
-            variant={isComplete ? "secondary" : "outline"} 
+          <Badge
+            variant={isComplete ? "secondary" : "outline"}
             className={`font-mono text-xs w-full justify-center ${isComplete ? 'opacity-50' : ''}`}
           >
             {need.position}
           </Badge>
         </div>
-        <div className="flex-1">
-          <Progress value={fillPercent} className="h-2" />
+        <div className="flex-1 space-y-1">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-semibold">{need.position}</span>
+            <span className="font-mono text-muted-foreground">
+              {need.filled}/{need.required}
+            </span>
+          </div>
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
+            <div
+              className={`
+                h-full transition-all duration-500 rounded-full
+                ${isComplete
+                  ? 'bg-baseball-green shadow-glow-success'
+                  : need.filled > 0
+                    ? 'bg-baseball-navy'
+                    : 'bg-transparent'
+                }
+              `}
+              style={{ width: `${fillPercent}%` }}
+            />
+          </div>
         </div>
-        <div className="w-16 text-right font-mono text-xs text-muted-foreground">
-          {need.filled}/{need.required}
-        </div>
+        {isComplete && (
+          <div className="absolute -right-1 -top-1">
+            <div className="h-5 w-5 rounded-full bg-baseball-green text-white flex items-center justify-center shadow-glow-success">
+              <Check className="h-3 w-3" />
+            </div>
+          </div>
+        )}
         {need.remaining > 0 && (
           <div className="w-14 text-right font-mono text-xs text-baseball-green">
             ${avgBudgetPerSpot}

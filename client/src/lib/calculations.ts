@@ -787,12 +787,14 @@ export function calculateInflation(
   const totalSpent = confirmedSpent + pendingSpent;
   const remainingBudget = totalBudget - totalSpent;
 
+  // Use Map for O(1) lookups instead of Array.find()
   const draftedPlayerIds = new Set(draftPicks.map(p => p.playerId));
+  const draftPicksMap = new Map(draftPicks.map(p => [p.playerId, p]));
   const pendingBidsMap = new Map(pendingBids.map(b => [b.playerId, b]));
-  
-  const undraftedPlayers = playerValues.filter(p => 
-    !draftedPlayerIds.has(p.id) && 
-    !pendingBidsMap.has(p.id) && 
+
+  const undraftedPlayers = playerValues.filter(p =>
+    !draftedPlayerIds.has(p.id) &&
+    !pendingBidsMap.has(p.id) &&
     !p.isDrafted
   );
 
@@ -819,9 +821,10 @@ export function calculateInflation(
 
   const inflationRate = (remainingBudget / remainingValue) - 1;
 
+  // Optimized: use Map for O(1) draft pick lookups
   const adjustedValues = playerValues.map(player => {
     if (draftedPlayerIds.has(player.id)) {
-      const draftPick = draftPicks.find(p => p.playerId === player.id);
+      const draftPick = draftPicksMap.get(player.id);
       return {
         ...player,
         isDrafted: true,

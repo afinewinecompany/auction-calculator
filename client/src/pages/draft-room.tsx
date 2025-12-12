@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { debounce } from 'lodash';
 import { useLocation } from 'wouter';
 import { useAppContext } from '@/lib/app-context';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { DraftMetrics } from '@/components/draft-metrics';
 import { DraftEntryDialog } from '@/components/draft-entry-dialog';
 import { DraftPlayerTable } from '@/components/draft-player-table';
@@ -10,7 +12,7 @@ import { DataFreshnessIndicator } from '@/components/features/data-freshness-ind
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { calculateInflation, type PendingBid } from '@/lib/calculations';
-import type { PlayerValue, DraftPick } from '@shared/schema';
+import type { PlayerValue, DraftPick, LeagueSettings } from '@shared/schema';
 
 export default function DraftRoom() {
   const [, navigate] = useLocation();
@@ -54,27 +56,32 @@ export default function DraftRoom() {
   const pendingBidsArray = useMemo(() => Array.from(pendingBids.values()), [pendingBids]);
   const pendingBidsTotal = useMemo(() => pendingBidsArray.reduce((sum, b) => sum + b.price, 0), [pendingBidsArray]);
 
-  useEffect(() => {
-    if (!draftState || !leagueSettings || playerValues.length === 0) return;
-    
-    const { inflationRate, adjustedValues } = calculateInflation(
-      playerValues,
-      draftState.picks,
-      leagueSettings,
-      pendingBidsArray
-    );
-    
-    const totalSpent = picksData.total;
-    const currentPicksLength = picksData.length;
-    
-    const needsDraftStateUpdate = 
-      draftState.currentInflationRate !== inflationRate ||
-      draftState.totalBudgetSpent !== totalSpent ||
-      draftState.totalPlayersDrafted !== currentPicksLength;
-    
-    if (needsDraftStateUpdate) {
+  // Debounced inflation calculation to prevent excessive recalculations
+  const debouncedInflationCalc = useMemo(
+    () => debounce((
+      playerVals: typeof playerValues,
+      picks: DraftPick[],
+      settings: LeagueSettings,
+      pending: typeof pendingBidsArray,
+      totalSpent: number,
+      currentPicksLength: number
+    ) => {
+      const { inflationRate, adjustedValues } = calculateInflation(
+        playerVals,
+        picks,
+        settings,
+        pending
+      );
+
       setDraftState(prev => {
         if (!prev) return prev;
+        const needsUpdate =
+          prev.currentInflationRate !== inflationRate ||
+          prev.totalBudgetSpent !== totalSpent ||
+          prev.totalPlayersDrafted !== currentPicksLength;
+
+        if (!needsUpdate) return prev;
+
         return {
           ...prev,
           currentInflationRate: inflationRate,
@@ -82,24 +89,46 @@ export default function DraftRoom() {
           totalPlayersDrafted: currentPicksLength,
         };
       });
-    }
-    
-    let hasChanges = false;
-    for (let i = 0; i < adjustedValues.length; i++) {
-      const newVal = adjustedValues[i];
-      const oldVal = playerValues[i];
-      if (!oldVal || 
-          newVal.adjustedValue !== oldVal.adjustedValue ||
-          newVal.isDrafted !== oldVal.isDrafted) {
-        hasChanges = true;
-        break;
+
+      // Check if player values actually changed before updating
+      let hasChanges = false;
+      for (let i = 0; i < adjustedValues.length; i++) {
+        const newVal = adjustedValues[i];
+        const oldVal = playerVals[i];
+        if (!oldVal ||
+            newVal.adjustedValue !== oldVal.adjustedValue ||
+            newVal.isDrafted !== oldVal.isDrafted) {
+          hasChanges = true;
+          break;
+        }
       }
-    }
-    
-    if (hasChanges) {
-      setPlayerValues(adjustedValues);
-    }
-  }, [picksData, pendingBidsArray, playerValues, leagueSettings, draftState, setDraftState, setPlayerValues]);
+
+      if (hasChanges) {
+        setPlayerValues(adjustedValues);
+      }
+    }, 300),
+    [setDraftState, setPlayerValues]
+  );
+
+  useEffect(() => {
+    if (!draftState || !leagueSettings || playerValues.length === 0) return;
+
+    const totalSpent = picksData.total;
+    const currentPicksLength = picksData.length;
+
+    debouncedInflationCalc(
+      playerValues,
+      draftState.picks,
+      leagueSettings,
+      pendingBidsArray,
+      totalSpent,
+      currentPicksLength
+    );
+
+    return () => {
+      debouncedInflationCalc.cancel();
+    };
+  }, [picksData, pendingBidsArray, playerValues, leagueSettings, draftState, debouncedInflationCalc]);
 
   const handlePlayerSelect = (player: PlayerValue) => {
     setSelectedPlayer(player);
@@ -209,80 +238,82 @@ export default function DraftRoom() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <DraftMetrics 
-        leagueSettings={leagueSettings}
-        draftState={draftState}
-        playerValues={playerValues}
-        pendingBidsTotal={pendingBidsTotal}
-        pendingBidsCount={pendingBids.size}
-      />
-
-      <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
-          <Button
-            variant="outline"
-            onClick={() => navigate('/')}
-            data-testid="button-back-to-settings"
-            className="hover-elevate"
-          >
-            <ChevronLeft className="mr-2 h-4 w-4" />
-            Back to Settings
-          </Button>
-
-          <div className="text-center">
-            <h1 className="font-display text-4xl font-bold text-baseball-leather tracking-tight" data-testid="text-draft-title">
-              DRAFT ROOM
-            </h1>
-            <DataFreshnessIndicator className="justify-center mt-1" />
-          </div>
-
-          <Button
-            variant="secondary"
-            onClick={handleUndoLastPick}
-            disabled={draftState.picks.length === 0}
-            data-testid="button-undo-pick"
-            className="hover-elevate"
-          >
-            Undo Last Pick
-          </Button>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <DraftPlayerTable 
-              players={playerValues}
-              onPlayerSelect={handlePlayerSelect}
-              onQuickDraft={handleDraftConfirm}
-              onPendingBidChange={handlePendingBidChange}
-              pendingBids={pendingBids}
-            />
-          </div>
-
-          <div className="lg:col-span-1 space-y-6">
-            <PositionalNeedsTracker
-              leagueSettings={leagueSettings}
-              draftState={draftState}
-              playerValues={playerValues}
-            />
-            <DraftLog 
-              picks={draftState.picks}
-              onUndo={handleUndoLastPick}
-              onUpdatePick={handleUpdatePick}
-              onDeletePick={handleDeletePick}
-            />
-          </div>
-        </div>
-      </div>
-
-      {selectedPlayer && (
-        <DraftEntryDialog
-          player={selectedPlayer}
-          isOpen={isDialogOpen}
-          onClose={() => setIsDialogOpen(false)}
-          onConfirm={handleDraftConfirm}
+    <ErrorBoundary>
+      <div className="min-h-screen bg-background">
+        <DraftMetrics
+          leagueSettings={leagueSettings}
+          draftState={draftState}
+          playerValues={playerValues}
+          pendingBidsTotal={pendingBidsTotal}
+          pendingBidsCount={pendingBids.size}
         />
-      )}
-    </div>
+
+        <div className="max-w-7xl mx-auto px-6 py-8">
+          <div className="flex items-center justify-between mb-8 flex-wrap gap-4">
+            <Button
+              variant="outline"
+              onClick={() => navigate('/')}
+              data-testid="button-back-to-settings"
+              className="hover-elevate"
+            >
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Back to Settings
+            </Button>
+
+            <div className="text-center">
+              <h1 className="font-display text-4xl font-bold text-baseball-leather tracking-tight" data-testid="text-draft-title">
+                DRAFT ROOM
+              </h1>
+              <DataFreshnessIndicator className="justify-center mt-1" />
+            </div>
+
+            <Button
+              variant="secondary"
+              onClick={handleUndoLastPick}
+              disabled={draftState.picks.length === 0}
+              data-testid="button-undo-pick"
+              className="hover-elevate"
+            >
+              Undo Last Pick
+            </Button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2 space-y-6">
+              <DraftPlayerTable
+                players={playerValues}
+                onPlayerSelect={handlePlayerSelect}
+                onQuickDraft={handleDraftConfirm}
+                onPendingBidChange={handlePendingBidChange}
+                pendingBids={pendingBids}
+              />
+            </div>
+
+            <div className="lg:col-span-1 space-y-6">
+              <PositionalNeedsTracker
+                leagueSettings={leagueSettings}
+                draftState={draftState}
+                playerValues={playerValues}
+              />
+              <DraftLog
+                picks={draftState.picks}
+                onUndo={handleUndoLastPick}
+                onUpdatePick={handleUpdatePick}
+                onDeletePick={handleDeletePick}
+              />
+            </div>
+          </div>
+        </div>
+
+        {selectedPlayer && (
+          <DraftEntryDialog
+            player={selectedPlayer}
+            isOpen={isDialogOpen}
+            onClose={() => setIsDialogOpen(false)}
+            onConfirm={handleDraftConfirm}
+          />
+        )}
+      </div>
+    </ErrorBoundary>
   );
 }

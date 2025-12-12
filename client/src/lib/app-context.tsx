@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, useCallback, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo, type ReactNode } from 'react';
+import { throttle } from 'lodash';
 import type {
   LeagueSettings,
   ScoringFormat,
@@ -12,6 +13,12 @@ import type {
 } from '@shared/schema';
 import type { ProjectionSystem } from '@shared/types/projections';
 import { fetchBatterProjections, fetchPitcherProjections } from './api-client';
+import {
+  saveProjectionsToIndexedDB,
+  loadProjectionsFromIndexedDB,
+  clearProjectionsFromIndexedDB,
+  getProjectionsCount
+} from './indexed-db';
 
 interface AppContextType {
   leagueSettings: LeagueSettings | null;
@@ -113,57 +120,73 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [myTeamName]);
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const initializeApp = async () => {
+      const stored = localStorage.getItem(STORAGE_KEY);
 
-    if (stored) {
-      try {
-        // Parse in chunks to avoid blocking UI thread with large projection data
-        const parsed: ExtendedAppState = JSON.parse(stored);
-        const teamName = parsed.myTeamName?.trim() || DEFAULT_MY_TEAM;
+      if (stored) {
+        try {
+          // Parse state WITHOUT projections (they're in IndexedDB now)
+          const parsed: ExtendedAppState = JSON.parse(stored);
+          const teamName = parsed.myTeamName?.trim() || DEFAULT_MY_TEAM;
 
-        // Load non-projection state synchronously (fast)
-        if (parsed.leagueSettings) setLeagueSettingsState(parsed.leagueSettings);
-        if (parsed.scoringFormat) setScoringFormatState(parsed.scoringFormat);
-        if (parsed.valueCalculationSettings) setValueCalculationSettingsState(parsed.valueCalculationSettings);
-        if (parsed.projectionFiles) setProjectionFilesState(parsed.projectionFiles);
-        if (parsed.playerValues) setPlayerValuesState(parsed.playerValues);
+          // Load non-projection state synchronously (fast)
+          if (parsed.leagueSettings) setLeagueSettingsState(parsed.leagueSettings);
+          if (parsed.scoringFormat) setScoringFormatState(parsed.scoringFormat);
+          if (parsed.valueCalculationSettings) setValueCalculationSettingsState(parsed.valueCalculationSettings);
+          if (parsed.projectionFiles) setProjectionFilesState(parsed.projectionFiles);
+          if (parsed.playerValues) setPlayerValuesState(parsed.playerValues);
 
-        const normalizedDraftState = normalizeDraftState(parsed.draftState, teamName);
-        if (normalizedDraftState) {
-          setDraftStateState(normalizedDraftState);
-        }
+          const normalizedDraftState = normalizeDraftState(parsed.draftState, teamName);
+          if (normalizedDraftState) {
+            setDraftStateState(normalizedDraftState);
+          }
 
-        setMyTeamNameState(teamName);
-        myTeamNameRef.current = teamName;
-        if (parsed.targetedPlayerIds) setTargetedPlayerIdsState(parsed.targetedPlayerIds);
-        if (parsed.projectionSource) setProjectionSourceState(parsed.projectionSource);
-        if (parsed.selectedProjectionSystem) setSelectedProjectionSystemState(parsed.selectedProjectionSystem);
+          setMyTeamNameState(teamName);
+          myTeamNameRef.current = teamName;
+          if (parsed.targetedPlayerIds) setTargetedPlayerIdsState(parsed.targetedPlayerIds);
+          if (parsed.projectionSource) setProjectionSourceState(parsed.projectionSource);
+          if (parsed.selectedProjectionSystem) setSelectedProjectionSystemState(parsed.selectedProjectionSystem);
 
-        // Defer projection loading to avoid blocking UI with large datasets
-        if (parsed.playerProjections && parsed.playerProjections.length > 0) {
-          setTimeout(() => {
-            setPlayerProjectionsState(parsed.playerProjections!);
+          // Load projections from IndexedDB (non-blocking)
+          const projectionsCount = await getProjectionsCount();
+          if (projectionsCount > 0) {
+            const projections = await loadProjectionsFromIndexedDB();
+            setPlayerProjectionsState(projections);
             setProjectionsLoading(false);
-          }, 0);
-          hasLoadedFromStorageRef.current = true;
-        } else {
+            hasLoadedFromStorageRef.current = true;
+          } else if (parsed.playerProjections && parsed.playerProjections.length > 0) {
+            // Migration: Move old localStorage projections to IndexedDB
+            console.log('Migrating projections from localStorage to IndexedDB...');
+            await saveProjectionsToIndexedDB(parsed.playerProjections);
+            setPlayerProjectionsState(parsed.playerProjections);
+            setProjectionsLoading(false);
+            hasLoadedFromStorageRef.current = true;
+
+            // Remove projections from localStorage to save space
+            delete parsed.playerProjections;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+          } else {
+            hasLoadedFromStorageRef.current = false;
+          }
+
+          // Re-save normalized state (without projections)
+          const stateToSave: ExtendedAppState = {
+            ...parsed,
+            draftState: normalizedDraftState,
+            myTeamName: teamName,
+            playerProjections: undefined, // Don't store in localStorage anymore
+          };
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
+        } catch (error) {
+          console.error('Failed to load app state:', error);
           hasLoadedFromStorageRef.current = false;
         }
-
-        // Re-save normalized state (without blocking on projections)
-        const stateToSave: ExtendedAppState = {
-          ...parsed,
-          draftState: normalizedDraftState,
-          myTeamName: teamName,
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
-      } catch (error) {
-        console.error('Failed to load app state:', error);
+      } else {
         hasLoadedFromStorageRef.current = false;
       }
-    } else {
-      hasLoadedFromStorageRef.current = false;
-    }
+    };
+
+    initializeApp();
   }, []);
 
   // Auto-load projections from API on mount when no projections exist
@@ -196,19 +219,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ? batterResult.lastUpdated
           : pitcherResult.lastUpdated;
 
-        // Defer state updates and localStorage write to prevent UI freeze with large datasets
-        setTimeout(() => {
-          setPlayerProjectionsState(allProjections);
-          setProjectionsLastUpdated(latestTimestamp);
-          setProjectionSourceState('api');
+        // Save to IndexedDB and update state (non-blocking)
+        await saveProjectionsToIndexedDB(allProjections);
 
-          // Save to localStorage (including projectionSource)
-          const stored = localStorage.getItem(STORAGE_KEY);
-          const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
-          existingState.playerProjections = allProjections;
-          existingState.projectionSource = 'api';
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
-        }, 0);
+        setPlayerProjectionsState(allProjections);
+        setProjectionsLastUpdated(latestTimestamp);
+        setProjectionSourceState('api');
+
+        // Save metadata to localStorage (NOT projections)
+        const stored = localStorage.getItem(STORAGE_KEY);
+        const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+        existingState.projectionSource = 'api';
+        existingState.playerProjections = undefined; // Don't store projections in localStorage
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
       } catch {
         setProjectionsError('Unable to load latest projections');
         // Don't crash - user can still upload CSV
@@ -237,14 +260,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [leagueSettings, scoringFormat, valueCalculationSettings, playerProjections, projectionFiles, playerValues, draftState, targetedPlayerIds]);
 
-  const saveToStorage = useCallback((overrides: Partial<ExtendedAppState> = {}) => {
+  // Core save function without throttling (for internal use)
+  const saveToStorageImmediate = useCallback((overrides: Partial<ExtendedAppState> = {}) => {
     if (isClearingRef.current) return;
     const snapshot = buildStateSnapshot(overrides);
     const toSave: ExtendedAppState = {};
     if (snapshot.leagueSettings) toSave.leagueSettings = snapshot.leagueSettings;
     if (snapshot.scoringFormat) toSave.scoringFormat = snapshot.scoringFormat;
     if (snapshot.valueCalculationSettings) toSave.valueCalculationSettings = snapshot.valueCalculationSettings;
-    if (snapshot.playerProjections?.length) toSave.playerProjections = snapshot.playerProjections;
+    // NEVER save playerProjections to localStorage - they're in IndexedDB
     if (snapshot.projectionFiles?.length) toSave.projectionFiles = snapshot.projectionFiles;
     if (snapshot.playerValues?.length) toSave.playerValues = snapshot.playerValues;
     if (snapshot.draftState) toSave.draftState = snapshot.draftState;
@@ -252,6 +276,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (snapshot.targetedPlayerIds?.length) toSave.targetedPlayerIds = snapshot.targetedPlayerIds;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   }, [buildStateSnapshot]);
+
+  // Throttled version to prevent excessive localStorage writes during rapid state changes
+  const saveToStorage = useMemo(
+    () => throttle(saveToStorageImmediate, 1000, { leading: false, trailing: true }),
+    [saveToStorageImmediate]
+  );
 
   const setLeagueSettings = useCallback((settings: LeagueSettings) => {
     setLeagueSettingsState(settings);
@@ -268,10 +298,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     saveToStorage({ valueCalculationSettings: settings });
   }, [saveToStorage]);
 
-  const setPlayerProjections = useCallback((projections: PlayerProjection[]) => {
+  const setPlayerProjections = useCallback(async (projections: PlayerProjection[]) => {
     setPlayerProjectionsState(projections);
-    saveToStorage({ playerProjections: projections });
-  }, [saveToStorage]);
+    // Save projections to IndexedDB instead of localStorage
+    await saveProjectionsToIndexedDB(projections);
+    // Don't save projections to localStorage anymore
+  }, []);
 
   const setProjectionFiles = useCallback((files: ProjectionFile[]) => {
     setProjectionFilesState(files);
@@ -478,7 +510,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [selectedProjectionSystem]);
 
-  const clearAll = useCallback(() => {
+  const clearAll = useCallback(async () => {
     isClearingRef.current = true;
     setLeagueSettingsState(null);
     setScoringFormatState(null);
@@ -491,6 +523,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     myTeamNameRef.current = DEFAULT_MY_TEAM;
     setTargetedPlayerIdsState([]);
     localStorage.removeItem(STORAGE_KEY);
+    // Clear IndexedDB projections too
+    await clearProjectionsFromIndexedDB();
     isClearingRef.current = false;
   }, []);
 
