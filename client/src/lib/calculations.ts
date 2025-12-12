@@ -257,7 +257,11 @@ function buildDraftablePoolWithPositionAllocation(
     const eligiblePlayers = allHitters
       .filter(p => {
         const idx = playerIndexMap.get(p)!;
-        return playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(idx);
+        const zScore = hitterZScoreMap.get(p) || 0;
+        // Exclude players with extremely low z-scores from draftable pool
+        return playerEligibleForPosition(p, pos) &&
+               !assignedPlayerIndices.has(idx) &&
+               zScore >= MIN_ZSCORE_FOR_DRAFTABLE;
       })
       .map(p => ({
         player: p,
@@ -301,7 +305,11 @@ function buildDraftablePoolWithPositionAllocation(
     const eligiblePlayers = allPitchers
       .filter(p => {
         const idx = playerIndexMap.get(p)!;
-        return playerEligibleForPosition(p, pos) && !assignedPlayerIndices.has(idx);
+        const zScore = pitcherZScoreMap.get(p) || 0;
+        // Exclude players with extremely low z-scores from draftable pool
+        return playerEligibleForPosition(p, pos) &&
+               !assignedPlayerIndices.has(idx) &&
+               zScore >= MIN_ZSCORE_FOR_DRAFTABLE;
       })
       .map(p => ({
         player: p,
@@ -344,7 +352,11 @@ function buildDraftablePoolWithPositionAllocation(
     const benchPitcherSpots = benchSpots - benchHitterSpots;
 
     const remainingHitters = allHitters
-      .filter(p => !assignedPlayerIndices.has(playerIndexMap.get(p)!))
+      .filter(p => {
+        const idx = playerIndexMap.get(p)!;
+        const zScore = hitterZScoreMap.get(p) || 0;
+        return !assignedPlayerIndices.has(idx) && zScore >= MIN_ZSCORE_FOR_DRAFTABLE;
+      })
       .map(p => ({
         player: p,
         index: playerIndexMap.get(p)!,
@@ -366,7 +378,11 @@ function buildDraftablePoolWithPositionAllocation(
     });
 
     const remainingPitchers = allPitchers
-      .filter(p => !assignedPlayerIndices.has(playerIndexMap.get(p)!))
+      .filter(p => {
+        const idx = playerIndexMap.get(p)!;
+        const zScore = pitcherZScoreMap.get(p) || 0;
+        return !assignedPlayerIndices.has(idx) && zScore >= MIN_ZSCORE_FOR_DRAFTABLE;
+      })
       .map(p => ({
         player: p,
         index: playerIndexMap.get(p)!,
@@ -444,11 +460,12 @@ function adjustReplacementLevels(
 }
 
 /**
- * Minimum z-score threshold for positive value.
- * Players below this absolute z-score will always get $1 value regardless of
- * replacement level, preventing inflated values for extremely low-stat players.
+ * Minimum z-score threshold for draftable pool inclusion.
+ * Players below this z-score are excluded from the draftable pool entirely,
+ * preventing extremely low-projection players (minimal playing time) from
+ * artificially inflating rankings.
  */
-const MIN_ZSCORE_FOR_VALUE = -1.5;
+const MIN_ZSCORE_FOR_DRAFTABLE = -1.5;
 
 function calculateVARPerPosition(
   draftablePlayers: DraftablePlayer[],
@@ -466,14 +483,6 @@ function calculateVARPerPosition(
     : 0;
 
   draftablePlayers.forEach(dp => {
-    // Players with extremely negative z-scores should not get positive VAR
-    // even if the replacement level is worse. This prevents inflated values
-    // for players projected for minimal playing time.
-    if (dp.totalZScore < MIN_ZSCORE_FOR_VALUE) {
-      dp.var = 0;
-      return;
-    }
-
     const posRep = positionReplacements.get(dp.assignedPosition);
     let replacementZScore: number;
 
@@ -728,7 +737,15 @@ export function calculatePlayerValues(
   const nonDraftableValues = playerValues.filter(p => !p.isDraftable);
 
   const sortedDraftables = draftableValues
-    .sort((a, b) => b.originalValue - a.originalValue)
+    .sort((a, b) => {
+      // Primary sort: by value (descending)
+      const valueDiff = b.originalValue - a.originalValue;
+      if (valueDiff !== 0) return valueDiff;
+
+      // Tiebreaker: by VAR (descending) to rank higher-potential players first
+      // This prevents low-projection $1 players from ranking above legitimate prospects
+      return (b.var || 0) - (a.var || 0);
+    })
     .map((player, index) => ({
       ...player,
       rank: index + 1,
