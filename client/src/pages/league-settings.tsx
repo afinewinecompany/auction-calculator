@@ -6,17 +6,22 @@ import { ScoringFormatSelector } from '@/components/scoring-format-selector';
 import { ProjectionUploader } from '@/components/projection-uploader';
 import { ValueCalculationPanel } from '@/components/value-calculation-panel';
 import { PlayerValuesTable } from '@/components/player-values-table';
+import { DataFreshnessIndicator } from '@/components/features/data-freshness-indicator';
+import { ProjectionSourceToggle } from '@/components/features/projection-source-toggle';
 import { Button } from '@/components/ui/button';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertCircle, Upload } from 'lucide-react';
 
 export default function LeagueSettingsPage() {
   const [, navigate] = useLocation();
-  const { 
-    leagueSettings, 
-    scoringFormat, 
+  const {
+    leagueSettings,
+    scoringFormat,
     playerProjections,
     playerValues,
+    projectionsError,
   } = useAppContext();
+
+  const [showErrorUploader, setShowErrorUploader] = useState(false);
 
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     config: !!leagueSettings,
@@ -85,8 +90,31 @@ export default function LeagueSettingsPage() {
           />
         )}
 
-        {canProceedToUpload && (
-          <ProjectionUploader 
+        {canProceedToUpload && projectionsError && !showErrorUploader && (
+          <div
+            data-testid="projections-error-section"
+            className="rounded-lg border-2 border-red-300 bg-red-50 p-6 space-y-4"
+          >
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-500 flex-shrink-0" />
+              <div>
+                <h3 className="font-semibold text-red-800">Unable to Load Projections</h3>
+                <p className="text-sm text-red-600">{projectionsError}</p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setShowErrorUploader(true)}
+              className="w-full bg-baseball-navy hover-elevate"
+              data-testid="button-upload-csv-fallback"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Upload CSV Projections
+            </Button>
+          </div>
+        )}
+
+        {canProceedToUpload && (showErrorUploader || !projectionsError) && (
+          <ProjectionUploader
             onComplete={handleUploadComplete}
             isComplete={canProceedToCalculate}
             isCollapsed={collapsedSections.upload}
@@ -106,10 +134,13 @@ export default function LeagueSettingsPage() {
         {canProceedToResults && (
           <div className="space-y-6">
             <div className="flex items-center justify-between flex-wrap gap-4">
-              <h2 className="font-display text-3xl font-bold text-baseball-leather tracking-tight">
-                AUCTION VALUES
-              </h2>
-              <Button 
+              <div>
+                <h2 className="font-display text-3xl font-bold text-baseball-leather tracking-tight">
+                  AUCTION VALUES
+                </h2>
+                <DataFreshnessIndicator className="mt-1" />
+              </div>
+              <Button
                 onClick={handleGoToDraft}
                 size="lg"
                 className="bg-baseball-navy hover-elevate active-elevate-2"
@@ -118,6 +149,9 @@ export default function LeagueSettingsPage() {
                 Go to Draft Room <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
             </div>
+            <ProjectionSourceToggle
+              onSwitchToCsv={() => setCollapsedSections(prev => ({ ...prev, upload: false }))}
+            />
             <PlayerValuesTable />
           </div>
         )}

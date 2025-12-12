@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx bmad-method@alpha install:*)",
+      "Bash(npx bmad-method@alpha install:menu)",
+      "Bash(if not exist \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\docs\\analysis\" mkdir \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\docs\\analysis\")",
+      "Bash(mkdir:*)",
+      "Bash(npm test:*)",
+      "Bash(if not exist \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\db\" mkdir \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\db\")",
+      "Bash(npm run check:*)",
+      "Bash(npm run test:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm ls:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npm install:*)",
+      "Bash(node --experimental-strip-types:*)",
+      "Bash(node --version:*)",
+      "Bash(DEBUG=vitest:*)",
+      "Bash(cat:*)",
+      "Bash(if not exist \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\routes\" mkdir \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\routes\")",
+      "Bash(if not exist \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\routes\\v1\" mkdir \"c:\\Users\\lilra\\myprojects\\FantasyBaseballAuction\\server\\routes\\v1\")",
+      "SlashCommand(/bmad:bmm:workflows:create-story)",
+      "Bash(git config:*)",
+      "Bash(where gh:*)",
+      "Bash(git remote add:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

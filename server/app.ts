@@ -1,15 +1,16 @@
 import { type Server } from "node:http";
 
-import express, {
-  type Express,
-  type Request,
-  Response,
-  NextFunction,
-} from "express";
+import express, { type Express } from "express";
 
 import { registerRoutes } from "./routes";
+import { errorHandler } from "./middleware/error-handler";
+import { initializeScheduler } from "./services/scraper/scheduler";
 
-export function log(message: string, source = "express") {
+/**
+ * Human-readable HTTP request logging for development.
+ * For structured JSON logging, use `log` from `./lib/logger`.
+ */
+function httpLog(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
@@ -57,7 +58,7 @@ app.use((req, res, next) => {
         logLine = logLine.slice(0, 79) + "…";
       }
 
-      log(logLine);
+      httpLog(logLine);
     }
   });
 
@@ -69,13 +70,11 @@ export default async function runApp(
 ) {
   const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+  // Structured error handling middleware - must be after all routes
+  app.use(errorHandler);
 
-    res.status(status).json({ message });
-    throw err;
-  });
+  // Initialize scrape scheduler (runs at 4 AM daily)
+  initializeScheduler();
 
   // importantly run the final setup after setting up all the other routes so
   // the catch-all route doesn't interfere with the other routes
@@ -91,6 +90,6 @@ export default async function runApp(
     host: "0.0.0.0",
     reusePort: true,
   }, () => {
-    log(`serving on port ${port}`);
+    httpLog(`serving on port ${port}`);
   });
 }

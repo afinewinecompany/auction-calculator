@@ -1,0 +1,72 @@
+# generated: 2025-12-09
+# project: FantasyBaseballAuction
+# project_key: fantasy-baseball-auction
+# tracking_system: file-system
+# story_location: docs/sprint-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic exists in epic file but not contexted
+#   - contexted or in-progress: Epic tech context created, development underway
+#   - done: Epic completed
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - drafted: Story file created in stories folder by *create-story
+#   - ready-for-dev: Draft approved and story context created
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - completed: Retrospective has been done
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epics should be marked `in-progress` before stories can be marked beyond `backlog`
+# - SM typically drafts next story ONLY after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then to 'done' after code review passes
+
+generated: 2025-12-09
+project: FantasyBaseballAuction
+project_key: fantasy-baseball-auction
+tracking_system: file-system
+story_location: docs/sprint-artifacts
+
+development_status:
+  # Epic 1: Backend Foundation & Database Setup
+  epic-1: done
+  1-1-backend-utilities-setup: done
+  1-2-database-schema-for-projections: done
+  1-3-projections-database-service: done
+  epic-1-retrospective: optional
+
+  # Epic 2: Fangraphs Scraper Service
+  epic-2: done
+  2-1-scraper-service-foundation: done
+  2-2-batter-projections-parser: done
+  2-3-pitcher-projections-parser: done
+  2-4-cron-job-scheduler: done
+  2-5-manual-scrape-trigger: done
+  epic-2-retrospective: optional
+
+  # Epic 3: Projections API Endpoints
+  epic-3: done
+  3-1-projections-api-routes: done
+  3-2-api-health-and-metadata-endpoint: done
+  epic-3-retrospective: optional
+
+  # Epic 4: Frontend Integration & Fallback
+  epic-4: done
+  4-1-api-client-and-auto-load-projections: done
+  4-2-data-freshness-display: done
+  4-3-csv-fallback-with-error-messaging: done
+  4-4-projection-source-toggle: done
+  epic-4-retrospective: optional
+
+  # Epic 5: Deployment
+  epic-5: in-progress
+  5-1-deploy-mvp-to-railway: in-progress
+  epic-5-retrospective: optional

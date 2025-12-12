@@ -1,4 +1,14 @@
 import { z } from "zod";
+import {
+  pgTable,
+  serial,
+  varchar,
+  integer,
+  decimal,
+  timestamp,
+  text,
+  index,
+} from 'drizzle-orm/pg-core';
 
 // League Configuration
 export const leagueSettingsSchema = z.object({
@@ -243,3 +253,80 @@ export const COMMON_PITCHING_CATEGORIES = [
 export const POSITION_OPTIONS = [
   "C", "1B", "2B", "3B", "SS", "OF", "UTIL", "MI", "CI", "SP", "RP", "P", "BENCH"
 ];
+
+// ============================================================================
+// Database Tables (Drizzle ORM)
+// ============================================================================
+
+/**
+ * Scrape metadata table - tracks each scraping job execution.
+ * Records status, timing, and player counts for monitoring.
+ */
+export const scrapeMetadata = pgTable('scrape_metadata', {
+  id: serial('id').primaryKey(),
+  scrapeType: varchar('scrape_type', { length: 20 }).notNull(),
+  sourceUrl: varchar('source_url', { length: 500 }).notNull(),
+  projectionSystem: varchar('projection_system', { length: 50 }).notNull(),
+  playerCount: integer('player_count'),
+  status: varchar('status', { length: 20 }).notNull(),
+  errorMessage: text('error_message'),
+  startedAt: timestamp('started_at').defaultNow().notNull(),
+  completedAt: timestamp('completed_at'),
+});
+
+/**
+ * Batter projections table - stores scraped batting projection data.
+ * Linked to scrape_metadata via scrape_id foreign key.
+ */
+export const batterProjections = pgTable('batter_projections', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  team: varchar('team', { length: 10 }),
+  positions: varchar('positions', { length: 50 }).notNull(),
+  pa: integer('pa').notNull().default(0),
+  ab: integer('ab').notNull().default(0),
+  h: integer('h').notNull().default(0),
+  hr: integer('hr').notNull().default(0),
+  r: integer('r').notNull().default(0),
+  rbi: integer('rbi').notNull().default(0),
+  sb: integer('sb').notNull().default(0),
+  bb: integer('bb').notNull().default(0),
+  so: integer('so').notNull().default(0),
+  avg: decimal('avg', { precision: 5, scale: 3 }).notNull().default('0.000'),
+  obp: decimal('obp', { precision: 5, scale: 3 }).notNull().default('0.000'),
+  slg: decimal('slg', { precision: 5, scale: 3 }).notNull().default('0.000'),
+  woba: decimal('woba', { precision: 5, scale: 3 }).notNull().default('0.000'),
+  wrcPlus: integer('wrc_plus').notNull().default(0),
+  scrapeId: integer('scrape_id')
+    .notNull()
+    .references(() => scrapeMetadata.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_batter_projections_scrape_id').on(table.scrapeId),
+]);
+
+/**
+ * Pitcher projections table - stores scraped pitching projection data.
+ * Linked to scrape_metadata via scrape_id foreign key.
+ */
+export const pitcherProjections = pgTable('pitcher_projections', {
+  id: serial('id').primaryKey(),
+  name: varchar('name', { length: 255 }).notNull(),
+  team: varchar('team', { length: 10 }),
+  ip: decimal('ip', { precision: 5, scale: 1 }).notNull().default('0.0'),
+  w: integer('w').notNull().default(0),
+  l: integer('l').notNull().default(0),
+  sv: integer('sv').notNull().default(0),
+  k: integer('k').notNull().default(0),
+  bb: integer('bb').notNull().default(0),
+  hr: integer('hr').notNull().default(0),
+  era: decimal('era', { precision: 4, scale: 2 }).notNull().default('0.00'),
+  whip: decimal('whip', { precision: 4, scale: 2 }).notNull().default('0.00'),
+  fip: decimal('fip', { precision: 4, scale: 2 }).notNull().default('0.00'),
+  scrapeId: integer('scrape_id')
+    .notNull()
+    .references(() => scrapeMetadata.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+}, (table) => [
+  index('idx_pitcher_projections_scrape_id').on(table.scrapeId),
+]);

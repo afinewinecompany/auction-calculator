@@ -6,12 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Progress } from '@/components/ui/progress';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Upload, FileText, Check, X, Loader2, ChevronDown, ChevronRight, Users, Activity } from 'lucide-react';
+import { FileText, Check, X, Loader2, ChevronDown, ChevronRight, Users, Activity } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { lookupPlayerPositions } from '@/lib/position-lookup';
 import { mergeProjections, identifyPlayerType } from '@/lib/projection-merger';
@@ -72,12 +71,15 @@ const STAT_ALIASES: Record<string, string[]> = {
 };
 
 export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false, onToggle }: ProjectionUploaderProps) {
-  const { 
-    playerProjections, 
-    setPlayerProjections, 
+  const {
+    playerProjections,
+    setPlayerProjections,
     scoringFormat,
     projectionFiles,
     addProjectionFile,
+    setProjectionSource,
+    setProjectionsError,
+    setProjectionsLastUpdated,
   } = useAppContext();
   const { toast } = useToast();
   
@@ -256,8 +258,8 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
           mlbamIds,
           (completed, total) => setState(prev => ({ ...prev, fetchProgress: (completed / total) * 100 }))
         );
-      } catch (error) {
-        console.error('Failed to lookup positions:', error);
+      } catch {
+        // Position lookup failed - fall back to empty map (will use default positions)
         positionsByMlbamId = new Map();
       }
       
@@ -327,8 +329,6 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       return;
     }
 
-    console.log(`[Projection Import] ${kind}: ${projections.length} players imported`);
-    console.log(`[Projection Import] Sample positions:`, projections.slice(0, 5).map(p => ({ name: p.name, positions: p.positions })));
     
     setState(prev => ({ ...prev, projections }));
     
@@ -347,21 +347,17 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
     
     const otherKind = kind === 'hitters' ? 'pitchers' : 'hitters';
     const otherTypeProjections = kind === 'hitters' ? existingPitchers : existingHitters;
-    
+
     if (otherTypeProjections.length > 0) {
       const hitterProjs = kind === 'hitters' ? projections : existingHitters;
       const pitcherProjs = kind === 'hitters' ? existingPitchers : projections;
-      console.log(`[Projection Merge] Hitters: ${hitterProjs.length}, Pitchers: ${pitcherProjs.length}`);
       const { mergedProjections, dualPlayersCount } = mergeProjections(hitterProjs, pitcherProjs);
-      console.log(`[Projection Merge] Result: ${mergedProjections.length} total, ${dualPlayersCount} two-way`);
-      
-      const pitchersInResult = mergedProjections.filter(p => 
-        p.positions.some(pos => ['SP', 'RP', 'P'].includes(pos.toUpperCase()))
-      );
-      console.log(`[Projection Merge] Pitchers in result: ${pitchersInResult.length}`);
       
       setPlayerProjections(mergedProjections);
-      
+      setProjectionSource('csv');
+      setProjectionsError(null);
+      setProjectionsLastUpdated(null);
+
       toast({
         title: 'Projections merged',
         description: `${mergedProjections.length} total players${dualPlayersCount > 0 ? `, including ${dualPlayersCount} two-way players` : ''}`,
@@ -369,7 +365,9 @@ export function ProjectionUploader({ onComplete, isComplete, isCollapsed = false
       onComplete();
     } else {
       setPlayerProjections(projections);
-      console.log(`[Projection Import] Saved ${projections.length} ${kind} to context`);
+      setProjectionSource('csv');
+      setProjectionsError(null);
+      setProjectionsLastUpdated(null);
       toast({
         title: `${kind === 'hitters' ? 'Hitters' : 'Pitchers'} imported`,
         description: `${projections.length} players imported. Upload ${otherKind} to complete.`,

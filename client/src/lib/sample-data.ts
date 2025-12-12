@@ -30,9 +30,11 @@ export const SAMPLE_SCORING_FORMAT: ScoringFormat = {
 
 export const SAMPLE_VALUE_SETTINGS: ValueCalculationSettings = {
   method: 'sgp',
-  autoReplacement: true,
+  replacementLevelMethod: 'lastDrafted',
   applyPositionScarcity: true,
   hitterBudgetPercent: 65,
+  hitterPitcherSplit: { method: 'calculated' },
+  showTiers: true,
 };
 
 export const SAMPLE_PROJECTIONS: PlayerProjection[] = [

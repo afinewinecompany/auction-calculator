@@ -10,6 +10,7 @@ import type {
   AppState,
   ProjectionFile,
 } from '@shared/schema';
+import { fetchBatterProjections, fetchPitcherProjections } from './api-client';
 
 interface AppContextType {
   leagueSettings: LeagueSettings | null;
@@ -42,7 +43,17 @@ interface AppContextType {
   setTargetedPlayerIds: (ids: string[]) => void;
   toggleTargetPlayer: (playerId: string) => void;
   isPlayerTargeted: (playerId: string) => boolean;
-  
+
+  // API projection state
+  projectionsLoading: boolean;
+  projectionsError: string | null;
+  projectionsLastUpdated: string | null;
+  projectionSource: 'api' | 'csv' | null;
+  setProjectionSource: (source: 'api' | 'csv' | null) => void;
+  setProjectionsError: (error: string | null) => void;
+  setProjectionsLastUpdated: (timestamp: string | null) => void;
+  refetchProjections: () => Promise<void>;
+
   clearAll: () => void;
 }
 
@@ -53,6 +64,7 @@ const DEFAULT_MY_TEAM = 'My Team';
 
 interface ExtendedAppState extends AppState {
   myTeamName?: string;
+  projectionSource?: 'api' | 'csv' | null;
 }
 
 function normalizePicks(picks: DraftPick[], teamName: string): DraftPick[] {
@@ -80,9 +92,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [draftState, setDraftStateState] = useState<DraftState | null>(null);
   const [myTeamName, setMyTeamNameState] = useState<string>(DEFAULT_MY_TEAM);
   const [targetedPlayerIds, setTargetedPlayerIdsState] = useState<string[]>([]);
-  
+
+  // API projection state
+  const [projectionsLoading, setProjectionsLoading] = useState<boolean>(true);
+  const [projectionsError, setProjectionsError] = useState<string | null>(null);
+  const [projectionsLastUpdated, setProjectionsLastUpdated] = useState<string | null>(null);
+  const [projectionSource, setProjectionSourceState] = useState<'api' | 'csv' | null>(null);
+
   const isClearingRef = useRef(false);
   const myTeamNameRef = useRef<string>(DEFAULT_MY_TEAM);
+  const hasLoadedFromStorageRef = useRef(false);
 
   useEffect(() => {
     myTeamNameRef.current = myTeamName;
@@ -90,26 +109,32 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
+    let hasExistingProjections = false;
+
     if (stored) {
       try {
         const parsed: ExtendedAppState = JSON.parse(stored);
         const teamName = parsed.myTeamName?.trim() || DEFAULT_MY_TEAM;
-        
+
         if (parsed.leagueSettings) setLeagueSettingsState(parsed.leagueSettings);
         if (parsed.scoringFormat) setScoringFormatState(parsed.scoringFormat);
         if (parsed.valueCalculationSettings) setValueCalculationSettingsState(parsed.valueCalculationSettings);
-        if (parsed.playerProjections) setPlayerProjectionsState(parsed.playerProjections);
+        if (parsed.playerProjections && parsed.playerProjections.length > 0) {
+          setPlayerProjectionsState(parsed.playerProjections);
+          hasExistingProjections = true;
+        }
         if (parsed.projectionFiles) setProjectionFilesState(parsed.projectionFiles);
         if (parsed.playerValues) setPlayerValuesState(parsed.playerValues);
-        
+
         const normalizedDraftState = normalizeDraftState(parsed.draftState, teamName);
         if (normalizedDraftState) {
           setDraftStateState(normalizedDraftState);
         }
-        
+
         setMyTeamNameState(teamName);
         myTeamNameRef.current = teamName;
         if (parsed.targetedPlayerIds) setTargetedPlayerIdsState(parsed.targetedPlayerIds);
+        if (parsed.projectionSource) setProjectionSourceState(parsed.projectionSource);
 
         const stateToSave: ExtendedAppState = {
           ...parsed,
@@ -121,6 +146,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
         console.error('Failed to load app state:', error);
       }
     }
+
+    // If projections existed in localStorage, skip auto-load
+    if (hasExistingProjections) {
+      setProjectionsLoading(false);
+      hasLoadedFromStorageRef.current = true;
+    } else {
+      hasLoadedFromStorageRef.current = false;
+    }
+  }, []);
+
+  // Auto-load projections from API on mount when no projections exist
+  useEffect(() => {
+    // Skip if projections were loaded from localStorage
+    if (hasLoadedFromStorageRef.current) {
+      return;
+    }
+
+    const loadProjections = async () => {
+      setProjectionsLoading(true);
+      setProjectionsError(null);
+
+      try {
+        const [batterResult, pitcherResult] = await Promise.all([
+          fetchBatterProjections(),
+          fetchPitcherProjections(),
+        ]);
+
+        // Merge projections
+        const allProjections = [
+          ...batterResult.projections,
+          ...pitcherResult.projections,
+        ];
+
+        setPlayerProjectionsState(allProjections);
+
+        // Use the more recent timestamp
+        const batterTime = new Date(batterResult.lastUpdated).getTime();
+        const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
+        const latestTimestamp = batterTime > pitcherTime
+          ? batterResult.lastUpdated
+          : pitcherResult.lastUpdated;
+        setProjectionsLastUpdated(latestTimestamp);
+        setProjectionSourceState('api');
+
+        // Save to localStorage (including projectionSource)
+        const stored = localStorage.getItem(STORAGE_KEY);
+        const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+        existingState.playerProjections = allProjections;
+        existingState.projectionSource = 'api';
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+      } catch {
+        setProjectionsError('Unable to load latest projections');
+        // Don't crash - user can still upload CSV
+      } finally {
+        setProjectionsLoading(false);
+      }
+    };
+
+    loadProjections();
   }, []);
 
   const buildStateSnapshot = useCallback((overrides: Partial<ExtendedAppState> = {}): ExtendedAppState => {
@@ -292,6 +376,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return targetedPlayerIds.includes(playerId);
   }, [targetedPlayerIds]);
 
+  const setProjectionSource = useCallback((source: 'api' | 'csv' | null) => {
+    setProjectionSourceState(source);
+    // Persist to localStorage
+    const stored = localStorage.getItem(STORAGE_KEY);
+    const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+    existingState.projectionSource = source ?? undefined;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+  }, []);
+
+  const refetchProjections = useCallback(async () => {
+    setProjectionsLoading(true);
+    setProjectionsError(null);
+
+    try {
+      const [batterResult, pitcherResult] = await Promise.all([
+        fetchBatterProjections(),
+        fetchPitcherProjections(),
+      ]);
+
+      // Merge projections
+      const allProjections = [
+        ...batterResult.projections,
+        ...pitcherResult.projections,
+      ];
+
+      setPlayerProjectionsState(allProjections);
+
+      // Use the more recent timestamp
+      const batterTime = new Date(batterResult.lastUpdated).getTime();
+      const pitcherTime = new Date(pitcherResult.lastUpdated).getTime();
+      const latestTimestamp = batterTime > pitcherTime
+        ? batterResult.lastUpdated
+        : pitcherResult.lastUpdated;
+
+      setProjectionsLastUpdated(latestTimestamp);
+      setProjectionSourceState('api');
+
+      // Save to localStorage (including projectionSource)
+      const stored = localStorage.getItem(STORAGE_KEY);
+      const existingState: ExtendedAppState = stored ? JSON.parse(stored) : {};
+      existingState.playerProjections = allProjections;
+      existingState.projectionSource = 'api';
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(existingState));
+    } catch {
+      setProjectionsError('Unable to load latest projections');
+    } finally {
+      setProjectionsLoading(false);
+    }
+  }, []);
+
   const clearAll = useCallback(() => {
     isClearingRef.current = true;
     setLeagueSettingsState(null);
@@ -333,6 +467,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setTargetedPlayerIds,
         toggleTargetPlayer,
         isPlayerTargeted,
+        projectionsLoading,
+        projectionsError,
+        projectionsLastUpdated,
+        projectionSource,
+        setProjectionSource,
+        setProjectionsError,
+        setProjectionsLastUpdated,
+        refetchProjections,
         clearAll,
       }}
     >

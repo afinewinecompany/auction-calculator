@@ -6,6 +6,7 @@ import { DraftEntryDialog } from '@/components/draft-entry-dialog';
 import { DraftPlayerTable } from '@/components/draft-player-table';
 import { DraftLog } from '@/components/draft-log';
 import { PositionalNeedsTracker } from '@/components/positional-needs-tracker';
+import { DataFreshnessIndicator } from '@/components/features/data-freshness-indicator';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft } from 'lucide-react';
 import { calculateInflation, type PendingBid } from '@/lib/calculations';
@@ -229,9 +230,12 @@ export default function DraftRoom() {
             Back to Settings
           </Button>
 
-          <h1 className="font-display text-4xl font-bold text-baseball-leather tracking-tight" data-testid="text-draft-title">
-            DRAFT ROOM
-          </h1>
+          <div className="text-center">
+            <h1 className="font-display text-4xl font-bold text-baseball-leather tracking-tight" data-testid="text-draft-title">
+              DRAFT ROOM
+            </h1>
+            <DataFreshnessIndicator className="justify-center mt-1" />
+          </div>
 
           <Button
             variant="secondary"
