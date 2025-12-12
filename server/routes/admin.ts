@@ -15,12 +15,21 @@ const router = Router();
 /**
  * Middleware to block admin routes in production.
  * Returns 404 to avoid revealing endpoint existence.
+ *
+ * TEMPORARY: Scrape endpoint allowed in production to populate initial data.
+ * TODO: Revert this after initial scrape is complete.
  */
 function developmentOnly(
   req: Request,
   res: Response,
   next: NextFunction
 ): void {
+  // TEMPORARY: Allow scrape endpoint in production for initial data population
+  if (req.path === '/scrape' && req.method === 'POST') {
+    next();
+    return;
+  }
+
   if (process.env.NODE_ENV === 'production') {
     res.status(404).json({
       error: { code: 'NOT_FOUND', message: 'Not found' },
