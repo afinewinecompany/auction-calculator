@@ -175,8 +175,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const [batterResult, pitcherResult] = await Promise.all([
-          fetchBatterProjections(),
-          fetchPitcherProjections(),
+          fetchBatterProjections(selectedProjectionSystem),
+          fetchPitcherProjections(selectedProjectionSystem),
         ]);
 
         // Merge projections
