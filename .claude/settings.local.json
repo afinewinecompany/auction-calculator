@@ -22,7 +22,12 @@
       "SlashCommand(/bmad:bmm:workflows:create-story)",
       "Bash(git config:*)",
       "Bash(where gh:*)",
-      "Bash(git remote add:*)"
+      "Bash(git remote add:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:uZsGDRXUXGlwmZjtowNiBHdMeiSdKZdf@postgres.railway.internal:5432/railway\" npm run db:push)",
+      "Bash(DATABASE_URL=\"postgresql://postgres:uZsGDRXUXGlwmZjtowNiBHdMeiSdKZdf@switchback.proxy.rlwy.net:35028/railway\" npm run db:push)",
+      "Bash(git push)"
     ],
     "deny": [],
     "ask": []
